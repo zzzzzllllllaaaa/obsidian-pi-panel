@@ -133,3 +133,10 @@ pi 内置工具：`read` `bash` `edit` `write` `grep` `find` `ls`。
 - 默认值已改为「全部（含 bash）」；旧默认 `read,edit,write`（缺 bash/grep/find/ls）会在加载时**自动升级**
 - 面板启动 pi 时若发现白名单不含 bash，会在聊天里提示，🐞 里也会标注 `⚠️ 无 bash`
 - 留空 = 不传 `--tools`，即 pi 默认可用的全部工具
+
+## 会话重命名
+
+选择器里每行 hover 出现 ✏️ 按钮，点击弹出输入框输入会话名，确定后：
+- 直接往 JSONL 追加一条 `session_info` entry（格式与 pi `/name` 命令完全一致）
+- 若该会话正在运行，顺带 RPC `set_session_name` 即时生效
+- 留空 = 清除名字，下次显示回到首条消息摘要

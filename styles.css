@@ -519,6 +519,57 @@
 .pi-session-meta { font-size: 10.5px; color: var(--text-faint); margin-top: 2px; }
 .pi-session-empty { font-size: 12px; color: var(--text-muted); padding: 8px 0; }
 
+.pi-session-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-normal);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pi-session-preview-secondary {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pi-session-rename {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0.45;
+  padding: 2px 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.pi-session-row:hover .pi-session-rename { display: block; }
+.pi-session-rename:hover { opacity: 1; }
+
+/* PiRenameModal */
+.pi-rename-modal h3 { margin: 0 0 8px; font-size: 15px; }
+.pi-rename-current { font-size: 12px; color: var(--text-faint); margin-bottom: 4px; }
+.pi-rename-preview { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+.pi-rename-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 14px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+.pi-rename-input:focus { outline: none; border-color: var(--interactive-accent); box-shadow: 0 0 0 2px var(--interactive-accent); }
+.pi-rename-btns { display: flex; gap: 6px; margin-top: 10px; }
+.pi-rename-btns button { font-size: 13px; padding: 4px 14px; border-radius: 4px; }
+.pi-rename-hint { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+
 /* ── 模型选择 / 管理 ──────────────────────────────────────────────────── */
 
 .pi-model-chip { cursor: pointer; }

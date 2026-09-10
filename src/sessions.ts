@@ -16,6 +16,8 @@ export interface PiSessionInfo {
   messageCount: number;
   /** 该会话的 cwd */
   cwd: string;
+  /** 用户指定的会话名（session_info entry 的 name） */
+  name: string;
 }
 
 function nodeMods(): { fs: any; path: any; os: any } | null {
@@ -67,6 +69,7 @@ function parseSession(file: string, fs: any, fallbackCwd: string): PiSessionInfo
   let cwd = fallbackCwd;
   let preview = "";
   let messageCount = 0;
+  let name = "";
 
   const text = readHead(file, fs);
   for (const raw of text.split("\n")) {
@@ -92,11 +95,13 @@ function parseSession(file: string, fs: any, fallbackCwd: string): PiSessionInfo
         }
         preview = t.replace(/\s+/g, " ").trim().slice(0, 90);
       }
+    } else if (evt.type === "session_info" && typeof evt.name === "string") {
+      name = evt.name.trim(); // 最新的 session_info 生效（pi 也是反向找最新一条）
     }
   }
 
   if (!id) id = String(file).split("_").pop()?.replace(/\.jsonl$/, "") || "";
-  return { file, id, mtimeMs: stat.mtimeMs || 0, preview, messageCount, cwd };
+  return { file, id, mtimeMs: stat.mtimeMs || 0, preview, messageCount, cwd, name };
 }
 
 function listInDir(dir: string, fs: any, path: any, cwd: string): PiSessionInfo[] {
@@ -168,4 +173,63 @@ export function sessionExists(file: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** 生成不与现有 entry 冲突的短 id（pi 的 id 也是短 hex） */
+function genEntryId(existing: Set<string>): string {
+  for (let i = 0; i < 20; i++) {
+    const id = Math.random().toString(16).slice(2, 10);
+    if (!existing.has(id)) return id;
+  }
+  return `r${Date.now().toString(16)}`;
+}
+
+/**
+ * 给历史会话改显示名。直接往 JSONL 追加一条 session_info entry
+ * （格式照 pi 的 appendSessionInfo：id 唯一 + parentId=最后一条 entry 的 id + name）。
+ * 空 name = 清除名字（pi 反向找最新一条 session_info，空名视为未设置）。
+ * 若会话正被 pi 运行，内存态要等重启/重开该会话才更新。
+ */
+export function renameSession(file: string, name: string): { ok: boolean; reason?: string } {
+  const m = nodeMods();
+  if (!m || !file) return { ok: false, reason: "桌面端不可用" };
+  const { fs } = m;
+  let text = "";
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch (e: any) {
+    return { ok: false, reason: `读取失败：${String(e?.message || e)}` };
+  }
+  const lines = text.split("\n").map((l: string) => l.trim()).filter(Boolean);
+  if (!lines.length) return { ok: false, reason: "会话文件为空" };
+
+  let lastId: string | undefined;
+  const ids = new Set<string>();
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const o = JSON.parse(lines[i]);
+      if (o && typeof o.id === "string") {
+        ids.add(o.id);
+        if (!lastId) lastId = o.id;
+        if (lastId) break;
+      }
+    } catch {
+      // 跳过坏行
+    }
+  }
+
+  const entry: any = {
+    type: "session_info",
+    id: genEntryId(ids),
+    timestamp: new Date().toISOString(),
+    name: String(name || "").trim(),
+  };
+  if (lastId) entry.parentId = lastId;
+
+  try {
+    fs.appendFileSync(file, JSON.stringify(entry) + "\n", "utf8");
+  } catch (e: any) {
+    return { ok: false, reason: `写入失败：${String(e?.message || e)}` };
+  }
+  return { ok: true };
 }

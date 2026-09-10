@@ -211,6 +211,7 @@ export class PiRpcClient {
   getAvailableModels(): Promise<any> { return this.request("get_available_models"); }
   setModel(provider: string, modelId: string): Promise<any> { return this.request("set_model", { provider, modelId }); }
   switchSession(sessionPath: string): Promise<any> { return this.request("switch_session", { sessionPath }); }
+  setSessionName(name: string): Promise<any> { return this.request("set_session_name", { name }); }
 
   /** 标记为“主动停止”（设置变更/切会话等），退出时不当作出错 */
   stop(reason = ""): void {
