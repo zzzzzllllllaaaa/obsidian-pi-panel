@@ -1,5 +1,5 @@
 import { App, Modal, Setting } from "obsidian";
-import { ModelManagerModal } from "./models";
+import { ModelInfo, ModelManagerModal, ModelPickerModal } from "./models";
 
 export type SessionMode = "ephemeral" | "persist" | "resume";
 
@@ -39,12 +39,20 @@ export class PiSettingsModal extends Modal {
   private settings: PiPanelSettings;
   private onSave: (s: PiPanelSettings) => Promise<void>;
   private cwd: string;
+  private fetchModels: () => Promise<ModelInfo[]>;
 
-  constructor(app: App, settings: PiPanelSettings, cwd: string, onSave: (s: PiPanelSettings) => Promise<void>) {
+  constructor(
+    app: App,
+    settings: PiPanelSettings,
+    cwd: string,
+    onSave: (s: PiPanelSettings) => Promise<void>,
+    fetchModels: () => Promise<ModelInfo[]> = async () => [],
+  ) {
     super(app);
     this.settings = { ...settings };
     this.cwd = cwd;
     this.onSave = onSave;
+    this.fetchModels = fetchModels;
   }
 
   onOpen() {
@@ -104,15 +112,40 @@ export class PiSettingsModal extends Modal {
           if (!isNaN(n) && n > 0) this.settings.inlineMaxChars = n;
         }));
 
+    let modelTextRef: { setValue: (v: string) => void } | null = null;
     new Setting(contentEl)
       .setName("默认模型")
-      .setDesc("启动 pi 时传给 --model，格式 provider/id（如 xianyu/deepseek-v4-flash）。留空 = 用 pi 自己的设置。面板头部的模型名字点一下可即时切换")
-      .addText(t => t
-        .setPlaceholder("provider/model-id")
-        .setValue(this.settings.defaultModel)
-        .onChange(v => { this.settings.defaultModel = v.trim(); }))
+      .setDesc("启动 pi 时传给 --model。可以直接从列表选，不用手打；留空 = 用 pi 自己的设置")
+      .addText(t => {
+        modelTextRef = t as any;
+        t.setPlaceholder("provider/model-id")
+          .setValue(this.settings.defaultModel)
+          .onChange(v => { this.settings.defaultModel = v.trim(); });
+      })
+      .addButton(b => b
+        .setButtonText("选择…")
+        .onClick(() => {
+          new ModelPickerModal(this.app, {
+            favorites: this.settings.favoriteModels || [],
+            load: async () => {
+              const fromPi = await this.fetchModels().catch(() => []);
+              return fromPi.length ? fromPi : [];
+            },
+            onPick: (provider, id) => {
+              this.settings.defaultModel = `${provider}/${id}`;
+              modelTextRef?.setValue(this.settings.defaultModel);
+            },
+            onToggleFavorite: (key) => {
+              const list = [...(this.settings.favoriteModels || [])];
+              const i = list.indexOf(key);
+              if (i >= 0) list.splice(i, 1); else list.push(key);
+              this.settings.favoriteModels = list;
+            },
+            onManage: () => new ModelManagerModal(this.app, () => {}).open(),
+          }).open();
+        }))
       .addExtraButton(b => b
-        .setIcon("list")
+        .setIcon("settings-2")
         .setTooltip("管理模型（models.json）")
         .onClick(() => { new ModelManagerModal(this.app, () => {}).open(); }));
 

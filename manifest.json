@@ -1,9 +1,9 @@
 {
-	"id": "pi-panel",
-	"name": "Pi Panel",
-	"version": "0.1.0",
-	"minAppVersion": "1.5.0",
-	"description": "在侧边栏内嵌 pi coding agent：边看笔记边提问，一键引用当前笔记/选区给 pi。",
-	"author": "Pi Agent",
-	"isDesktopOnly": true
+  "id": "pi-panel",
+  "name": "Pi Panel",
+  "version": "0.4.0",
+  "minAppVersion": "1.5.0",
+  "description": "在侧边栏内嵌 pi coding agent：边看笔记边提问，一键引用当前笔记/选区；历史会话、模型切换与管理、调试日志。",
+  "author": "Pi Agent",
+  "isDesktopOnly": true
 }

@@ -601,3 +601,37 @@
 .pi-field-check label { font-size: 12px; }
 
 .pi-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+/* ── 调试日志弹窗 ─────────────────────────────────────────────────────── */
+
+.pi-debug-modal .pi-debug-info {
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-muted);
+}
+
+.pi-debug-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.pi-debug-bar button { font-size: 12px; padding: 3px 10px; }
+
+.pi-debug-hint { font-size: 10.5px; color: var(--text-faint); margin-bottom: 6px; word-break: break-all; }
+
+.pi-debug-log {
+  max-height: 46vh;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.45;
+  background: var(--background-primary-alt);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: var(--font-monospace);
+}

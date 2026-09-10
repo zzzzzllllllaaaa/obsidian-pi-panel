@@ -16,6 +16,12 @@ import {
   ModelPickerModal,
   validateModelsFile,
 } from "./models";
+import { debugLog } from "./log";
+import { DebugModal } from "./debug";
+
+let PLUGIN_VERSION = "?";
+/** 由 main.ts 在 onload 时注入插件版本（弹窗里显示用） */
+export function setPluginVersion(v: string) { PLUGIN_VERSION = v || "?"; }
 
 export const VIEW_TYPE_PI_PANEL = "pi-panel-view";
 
@@ -227,6 +233,7 @@ export class PiPanelView extends ItemView {
     iconBtn("history", "历史会话", () => this.openSessionPicker());
     iconBtn("plus", "新会话", () => this.newSession());
     iconBtn("eraser", "清空界面", () => this.clearChat());
+    iconBtn("bug", "调试日志", () => this.openDebug());
     iconBtn("settings", "设置", () => this.openSettings());
   }
 
@@ -257,15 +264,53 @@ export class PiPanelView extends ItemView {
       await this.saveSettings();
       this.resetPiProcess();
       new Notice("Pi Panel 设置已保存，pi 进程已重置（下条消息生效）");
+    }, async () => {
+      const { models, note } = await this.fetchModels();
+      if (note) new Notice(note, 5000);
+      return models;
     }).open();
   }
 
   /** 设置变更后重启 pi 进程，让新参数（cwd / 工具白名单 / 附加系统提示）生效 */
   resetPiProcess() {
+    debugLog.info(`重置 pi 进程（设置变更）: cwd=${this.effectiveCwd()} tools=${this.settings.piAllowedTools} model=${this.settings.defaultModel || "(默认)"}`);
     this.rpc?.stop();
     this.rpc = null;
     this.hideTyping();
     this.setStatus("idle", "设置已变更");
+  }
+
+  /** 调试日志弹窗（环境信息 + 日志尾部） */
+  openDebug() {
+    new DebugModal(this.app, () => this.debugInfo()).open();
+  }
+
+  private pluginVersion(): string {
+    try {
+      const plugins = (this.app as any)?.plugins?.plugins;
+      return String(plugins?.["pi-panel"]?.manifest?.version || PLUGIN_VERSION);
+    } catch {
+      return PLUGIN_VERSION;
+    }
+  }
+
+  private debugInfo(): string {
+    const lines = [
+      `时间         ${new Date().toLocaleString()}`,
+      `插件版本     ${this.pluginVersion()}`,
+      `Obsidian     ${String((this.app as any)?.appVersion || "?")} | platform ${String((globalThis as any)?.process?.platform || "?")} | node ${String((globalThis as any)?.process?.versions?.node || "?")}`,
+      `pi 可执行     ${this.settings.piExecutable}`,
+      `工作目录     ${this.effectiveCwd() || "(未知)"}`,
+      `vault 根     ${this.workingDir() || "(未知)"}`,
+      `pi 进程      ${this.rpc?.running ? `运行中 (${this.rpc.lastCommand()})` : "未运行"}`,
+      `会话模式     ${this.settings.sessionMode}${this.selectedSession ? ` / 指定会话 ${this.selectedSession}` : ""}`,
+      `工具白名单   ${this.settings.piAllowedTools || "(全部，含 bash)"}`,
+      `默认模型     ${this.settings.defaultModel || "(未设)"}`,
+      `附加系统提示 ${this.settings.extraSystemPromptPath || "(无)"}`,
+      `当前状态     ${this.status} ${this.statusDetail}`,
+      `日志文件     ${debugLog.getFile() || "(未启用)"}`,
+    ];
+    return lines.join("\n");
   }
 
   private workingDir(): string {
@@ -312,8 +357,7 @@ export class PiPanelView extends ItemView {
   private ensureRpc(): boolean {
     if (this.rpc?.running) return true;
 
-    const args = ["--mode", "rpc"];
-    if (this.selectedSession) {
+    const args = ["--mode", "rpc"];    if (this.selectedSession) {
       args.push("--session", this.selectedSession);
     } else if (this.settings.sessionMode === "ephemeral") {
       args.push("--no-session");
@@ -340,17 +384,21 @@ export class PiPanelView extends ItemView {
       args,
       cwd,
       onEvent: (evt) => this.handleEvent(evt),
+      onLog: (kind, text) => debugLog.line(kind, text),
       onError: (msg) => {
         this.setStatus("error", "进程");
         this.systemLine(`pi 启动失败：${msg}`, "pi-err");
+        debugLog.error(`pi 启动失败：${msg}`);
       },
       onExit: (code, signal) => {
         this.setStatus("exited", `code=${code}${signal ? " " + signal : ""}`);
+        this.systemLine(`pi 进程退出（code=${code}${signal ? ", " + signal : ""}）——点头部 🐞 看日志`, "pi-err");
         this.rpc = null;
       },
       onStderr: (text) => this.systemLine(text.slice(0, 1500), "pi-stderr"),
     });
 
+    debugLog.info(`启动 pi：${this.settings.piExecutable || "pi"} ${args.join(" ")}`);
     this.setStatus("starting");
     const ok = this.rpc.start();
     if (!ok) return false;
@@ -374,6 +422,7 @@ export class PiPanelView extends ItemView {
       case "response":
         if (evt.success === false) {
           this.systemLine(`命令失败：${evt.command || "?"} — ${evt.error || ""}`, "pi-err");
+          debugLog.error(`命令失败：${evt.command || "?"} — ${evt.error || ""}`);
         } else if (evt.command === "get_state" && evt.data) {
           this.applyState(evt.data);
         } else if (evt.command === "get_messages" && evt.data) {
@@ -1086,29 +1135,7 @@ export class PiPanelView extends ItemView {
   /** 历史会话选择器 / 模型选择器 —— 头部 chip 点击调用 */
   private async openModelPicker() {
     const current = this.currentModelKey();
-    let models: ModelInfo[] = [];
-    let note = "";
-    if (this.rpc?.running) {
-      try {
-        const data = await this.rpc.getAvailableModels();
-        models = (data?.models || []).map((m: any) => ({
-          id: m.id,
-          name: m.name,
-          provider: m.provider,
-          api: m.api,
-          reasoning: m.reasoning,
-          contextWindow: m.contextWindow,
-          maxTokens: m.maxTokens,
-          source: "builtin",
-        }));
-      } catch (e: any) {
-        note = `读取可用模型失败（${String(e?.message || e)}），下面是 models.json 里的自定义模型`;
-      }
-    }
-    if (!models.length) {
-      models = this.modelsFromConfig();
-      if (!note) note = "pi 未运行：下面是 models.json 里的自定义模型（启动 pi 后可选内置模型）";
-    }
+    const { models, note } = await this.fetchModels();
     if (note) new Notice(note, 6000);
 
     new ModelPickerModal(this.app, {
@@ -1119,6 +1146,43 @@ export class PiPanelView extends ItemView {
       onToggleFavorite: (key) => void this.toggleFavorite(key),
       onManage: () => this.openModelManager(),
     }).open();
+  }
+
+  /** 取可用模型：优先让 pi 跑 get_available_models（会自动拉起进程），失败退回 models.json */
+  async fetchModels(): Promise<{ models: ModelInfo[]; note: string }> {
+    let note = "";
+    if (!this.rpc?.running) {
+      debugLog.info("模型选择器：pi 未运行，尝试自动启动以拉取完整模型列表");
+      this.ensureRpc();
+    }
+    if (this.rpc?.running) {
+      try {
+        const data = await this.rpc.getAvailableModels();
+        const models: ModelInfo[] = (data?.models || []).map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          provider: m.provider,
+          api: m.api,
+          reasoning: m.reasoning,
+          contextWindow: m.contextWindow,
+          maxTokens: m.maxTokens,
+          source: "builtin",
+        }));
+        if (models.length) {
+          debugLog.info(`get_available_models -> ${models.length} 个模型`);
+          return { models, note };
+        }
+        note = "pi 返回了 0 个模型（检查 models.json 是否被整体丢弃）";
+      } catch (e: any) {
+        note = `get_available_models 失败：${String(e?.message || e)}（退回 models.json）`;
+        debugLog.error(note);
+      }
+    } else {
+      note = "pi 未启动：下面是 models.json 里的自定义模型";
+    }
+    const fallback = this.modelsFromConfig();
+    debugLog.info(`模型选择器退回 models.json -> ${fallback.length} 个模型`);
+    return { models: fallback, note };
   }
 
   /** 从 ~/.pi/agent/models.json 读自定义模型（pi 未运行时的傅底） */
@@ -1157,6 +1221,7 @@ export class PiPanelView extends ItemView {
   }
 
   private async pickModel(provider: string, id: string) {
+    debugLog.user(`选择模型：${provider}/${id}`);
     if (this.rpc?.running) {
       try {
         await this.rpc.setModel(provider, id);
@@ -1164,7 +1229,8 @@ export class PiPanelView extends ItemView {
         await this.saveSettings();
         return;
       } catch (e: any) {
-        new Notice(`切换模型失败：${String(e?.message || e)}（会记为默认值，下条消息重启生效）`, 6000);
+        new Notice(`切换模型失败：${String(e?.message || e)}（已记为默认值，下条消息重启生效）`, 6000);
+        debugLog.error(`set_model 失败：${String(e?.message || e)}`);
       }
     }
     // pi 未运行 / 切换失败 → 记默认值，下次启动用 --model

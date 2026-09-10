@@ -15,6 +15,8 @@ export interface PiRpcOptions {
   onError: (message: string) => void;
   onExit: (code: number | null, signal: string | null) => void;
   onStderr: (text: string) => void;
+  /** 调试日志回调（发出/收到的原始 JSONL、stderr、退出等） */
+  onLog?: (kind: "info" | "rpc-send" | "rpc-recv" | "stderr" | "error", text: string) => void;
 }
 
 export class PiRpcClient {
@@ -32,17 +34,35 @@ export class PiRpcClient {
     return !!this.child;
   }
 
+  private lastCmd = "";
+
+  /** 最近一次启动用的命令行（调试用） */
+  lastCommand(): string { return this.lastCmd; }
+
+  private log(kind: "info" | "rpc-send" | "rpc-recv" | "stderr" | "error", text: string) {
+    this.opts.onLog?.(kind, text);
+  }
+
   start(): boolean {
-    if (this.child) return true;
+    if (this.child) {
+      this.log("info", "start(): 进程已在运行，跳过");
+      return true;
+    }
 
     let cp: any;
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       cp = require("child_process");
     } catch (e: any) {
+      this.log("error", `无法加载 child_process：${String(e?.message || e)}`);
       this.opts.onError(`无法加载 child_process：${String(e?.message || e)}`);
       return false;
     }
+
+    const cmdline = [this.opts.exe, ...this.opts.args].map(quoteArg).join(" ");
+    this.lastCmd = cmdline;
+    this.log("info", `spawn: ${cmdline}`);
+    this.log("info", `cwd: ${this.opts.cwd || "(继承 Obsidian 进程)"}`);
 
     try {
       this.child = cp.spawn(this.opts.exe, this.opts.args, {
@@ -52,24 +72,35 @@ export class PiRpcClient {
       });
     } catch (e: any) {
       this.child = null;
+      this.log("error", `spawn 抛异常：${String(e?.message || e)}`);
       this.opts.onError(`启动 pi 失败：${String(e?.message || e)}`);
       return false;
     }
 
+    this.log("info", `进程已启动 pid=${this.child?.pid ?? "?"}`);
+
     this.child.on("error", (err: any) => {
       this.child = null;
+      this.log("error", `进程 error：${String(err?.message || err)}`);
       this.opts.onError(String(err?.message || err));
     });
     this.child.on("exit", (code: number | null, signal: string | null) => {
       this.child = null;
+      this.log("info", `进程退出 code=${code} signal=${signal}`);
       this.opts.onExit(code, signal);
     });
     this.child.stdout?.on("data", (chunk: any) => this.consume(chunk));
     this.child.stderr?.on("data", (chunk: any) => {
       const text = String(chunk?.toString?.() || chunk || "").trim();
-      if (text) this.opts.onStderr(text);
+      if (text) {
+        this.log("stderr", text);
+        this.opts.onStderr(text);
+      }
     });
-    this.child.stdin?.on("error", () => { /* 进程已退出，忽略写失败 */ });
+    this.child.stdin?.on("error", (e: any) => {
+      this.log("error", `stdin 写入错误：${String(e?.message || e)}`);
+    });
+    this.child.stdin?.on("close", () => this.log("info", "stdin 已关闭"));
 
     return true;
   }
@@ -87,6 +118,7 @@ export class PiRpcClient {
       try {
         evt = JSON.parse(line);
       } catch {
+        this.log("error", `stdout 不是合法 JSON，已跳过：${line.slice(0, 300)}`);
         continue;
       }
       if (evt?.type === "response" && typeof evt.command === "string") {
@@ -98,20 +130,29 @@ export class PiRpcClient {
           else w.resolve(evt.data);
         }
       }
+      // 噪音事件不打日志（文本增量一大堆）
+      if (!isNoisy(evt)) this.log("rpc-recv", summarize(evt));
       try {
         this.opts.onEvent(evt);
       } catch (e) {
+        this.log("error", `事件处理异常：${String((e as any)?.stack || e)}`);
         console.warn("[PiPanel] event handler failed", e, evt);
       }
     }
   }
 
   send(obj: any): boolean {
-    if (!this.child?.stdin?.writable) return false;
+    if (!this.child?.stdin?.writable) {
+      this.log("error", `stdin 不可写，丢弃：${summarize(obj)}`);
+      return false;
+    }
+    const text = JSON.stringify(obj) + "\n";
     try {
-      this.child.stdin.write(JSON.stringify(obj) + "\n");
+      this.child.stdin.write(text);
+      this.log("rpc-send", summarize(obj));
       return true;
-    } catch {
+    } catch (e: any) {
+      this.log("error", `写入失败：${String(e?.message || e)} | ${summarize(obj)}`);
       return false;
     }
   }
@@ -146,6 +187,7 @@ export class PiRpcClient {
         const cur = this.pending.get(command);
         if (!cur || !cur.includes(entry)) return;
         this.pending.set(command, cur.filter((x) => x !== entry));
+        this.log("error", `${command} 超时（${timeoutMs}ms）未收到响应`);
         reject(new Error(`${command} 超时（${timeoutMs}ms）`));
       }, timeoutMs);
     });
@@ -157,6 +199,7 @@ export class PiRpcClient {
 
   stop() {
     if (!this.child) return;
+    this.log("info", "stop(): 结束 pi 进程");
     for (const waiters of this.pending.values()) {
       for (const w of waiters) w.reject(new Error("pi 进程已退出"));
     }
@@ -165,4 +208,26 @@ export class PiRpcClient {
     try { this.child.kill(); } catch { /* noop */ }
     this.child = null;
   }
+}
+
+function quoteArg(a: string): string {
+  return /\s/.test(a) ? `"${a}"` : a;
+}
+
+/** 文本增量类事件不打日志，否则日志被刷爆 */
+function isNoisy(evt: any): boolean {
+  return evt?.type === "message_update";
+}
+
+const MAX_LOG_CHARS = 6000;
+
+function summarize(obj: any): string {
+  let text = "";
+  try {
+    text = JSON.stringify(obj);
+  } catch {
+    text = String(obj);
+  }
+  if (text.length <= MAX_LOG_CHARS) return text;
+  return text.slice(0, MAX_LOG_CHARS) + ` …(+${text.length - MAX_LOG_CHARS} chars)`;
 }
