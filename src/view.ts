@@ -18,6 +18,7 @@ import {
 } from "./models";
 import { debugLog } from "./log";
 import { DebugModal } from "./debug";
+import { toolsToSet } from "./settings";
 
 let PLUGIN_VERSION = "?";
 /** 由 main.ts 在 onload 时注入插件版本（弹窗里显示用） */
@@ -337,7 +338,7 @@ export class PiPanelView extends ItemView {
       `vault 根     ${this.workingDir() || "(未知)"}`,
       `pi 进程      ${this.rpc?.running ? `运行中 (${this.rpc.lastCommand()})` : "未运行"}`,
       `会话模式     ${this.settings.sessionMode}${this.selectedSession ? ` / 指定会话 ${this.selectedSession}` : ""}`,
-      `工具白名单   ${this.settings.piAllowedTools || "(全部，含 bash)"}`,
+      `工具白名单   ${this.settings.piAllowedTools || "(全部，含 bash)"}${toolsToSet(this.settings.piAllowedTools).has("bash") ? "" : " ⚠️ 无 bash"}`,
       `默认模型     ${this.settings.defaultModel || "(未设)"}`,
       `附加系统提示 ${this.settings.extraSystemPromptPath || "(无)"}`,
       `当前状态     ${this.status} ${this.statusDetail}`,
@@ -399,6 +400,13 @@ export class PiPanelView extends ItemView {
     }
     const tools = String(this.settings.piAllowedTools || "").trim();
     if (tools) args.push("--tools", tools);
+    if (!toolsToSet(tools).has("bash")) {
+      debugLog.info(`工具白名单无 bash：${tools || "(空)"} → pi 跑不了 python tools/… 类命令`);
+      this.systemLine(
+        `提示：当前工具白名单（${tools || "空"}）不含 bash，pi 跑不了 python tools/workspace.py init、experience.py search 这类命令。设置 → Pi Panel → 工具权限 勾上 bash`,
+        "pi-sys",
+      );
+    }
     const defModel = String(this.settings.defaultModel || "").trim();
     if (defModel && !this.selectedSession) args.push("--model", defModel);
 
@@ -412,21 +420,27 @@ export class PiPanelView extends ItemView {
     }
     const extra = String(this.settings.extraSystemPromptPath || "").trim();
     if (extra) args.push("--append-system-prompt", extra);
-    this.rpc = new PiRpcClient({
+    let client!: PiRpcClient;
+    client = new PiRpcClient({
       exe: this.settings.piExecutable || "pi",
       args,
       cwd,
       onEvent: (evt) => this.handleEvent(evt),
       onLog: (kind, text) => debugLog.line(kind, text),
       onError: (msg) => {
+        if (this.rpc !== client) return;
         this.setStatus("error", "进程");
         this.systemLine(`pi 启动失败：${msg}`, "pi-err");
         debugLog.error(`pi 启动失败：${msg}`);
       },
       onExit: (code, signal) => {
-        const client = this.rpc;
-        const expected = client?.wasExpectedStop?.() === true;
-        const why = client?.stopReasonText?.() || "";
+        // 旧进程的退出事件可能晚于新进程启动 —— 不是当前进程就忽略
+        if (this.rpc !== client) {
+          debugLog.info(`忽略旧 pi 进程退出事件（code=${code}）`);
+          return;
+        }
+        const expected = client.wasExpectedStop();
+        const why = client.stopReasonText();
         this.rpc = null;
         if (expected) {
           // 插件主动重启（改设置 / 切会话 / 换模型）：不是错误
@@ -440,15 +454,16 @@ export class PiPanelView extends ItemView {
       },
       onStderr: (text) => this.systemLine(text.slice(0, 1500), "pi-stderr"),
     });
+    this.rpc = client;
 
     debugLog.info(`启动 pi：${this.settings.piExecutable || "pi"} ${args.join(" ")}`);
     this.setStatus("starting");
-    const ok = this.rpc.start();
+    const ok = client.start();
     if (!ok) return false;
-    this.rpc.getState();
+    client.getState();
     if (this.selectedSession) {
       this.pendingHistory = true;
-      this.rpc.getMessages();
+      client.getMessages();
     }
     return true;
   }

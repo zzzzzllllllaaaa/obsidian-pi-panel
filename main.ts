@@ -1,6 +1,6 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { PiPanelView, setPluginVersion, VIEW_TYPE_PI_PANEL } from "./src/view";
-import { DEFAULT_SETTINGS, PiPanelSettings } from "./src/settings";
+import { DEFAULT_SETTINGS, PiPanelSettings, renderToolsPicker } from "./src/settings";
 import { loadModelsFile, ModelInfo, ModelManagerModal, ModelPickerModal, validateModelsFile } from "./src/models";
 import { debugLog } from "./src/log";
 import { DebugModal } from "./src/debug";
@@ -168,6 +168,11 @@ export default class PiPanelPlugin extends Plugin {
     if (raw && typeof raw.persistSession === "boolean" && raw.sessionMode === undefined) {
       this.settings.sessionMode = raw.persistSession ? "persist" : "ephemeral";
     }
+    // 旧默认白名单（无 bash/grep/find/ls）→ 升级成新默认，否则 pi 连目录都列不了
+    if (raw && raw.piAllowedTools === "read,edit,write") {
+      this.settings.piAllowedTools = DEFAULT_SETTINGS.piAllowedTools;
+      debugLog.info(`工具白名单旧默认 read,edit,write → 升级为 ${this.settings.piAllowedTools}（旧值缺 bash/grep/find/ls）`);
+    }
     delete (this.settings as any).persistSession;
   }
 
@@ -210,15 +215,13 @@ class PiSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName("允许的工具")
-      .setDesc("传给 pi --tools 的白名单（逗号分隔）。留空 = 全部工具，含 bash，注意风险")
-      .addText(t => t
-        .setPlaceholder("read,edit,write")
-        .setValue(this.plugin.settings.piAllowedTools)
-        .onChange(async (v) => {
-          this.plugin.settings.piAllowedTools = v.trim();
-          await this.plugin.saveSettings();
-        }));
+      .setName("工具权限（传给 pi --tools）")
+      .setDesc("勾选 pi 能用的内置工具。bash = 能跑任意命令（pi 官方默认就是这么开的）；不勾就只能读写笔记");
+    renderToolsPicker(containerEl, () => this.plugin.settings.piAllowedTools, (v) => {
+      this.plugin.settings.piAllowedTools = v;
+      void this.plugin.saveSettings();
+      this.plugin.bouncePanels();
+    });
 
     new Setting(containerEl)
       .setName("会话")

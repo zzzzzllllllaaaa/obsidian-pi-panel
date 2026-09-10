@@ -46,7 +46,7 @@ cp main.js manifest.json styles.css "<vault>/.obsidian/plugins/pi-panel/"
 | 项 | 说明 |
 |---|---|
 | pi 可执行文件 | 默认 `pi`，可用绝对路径 |
-| 允许的工具 | `--tools` 白名单，默认 `read,edit,write`；留空 = 全部工具（含 bash） |
+| 工具权限 | `--tools` 白名单，默认 `read,edit,write`；留空 = 全部工具（含 bash） |
 | 会话 | `新会话并存盘` / `继续上次(--continue)` / `不保存(--no-session)` |
 | 内联笔记上限 | 超过则只给 `@路径`，默认 20000 字符 |
 | 工作目录 | pi 的 cwd，留空 = vault 根。可与笔记目录分开（如 `E:\piganet`） |
@@ -115,3 +115,21 @@ pi 的 cwd 可以是项目目录（`E:\piganet`，这样能读到那边的 `AGEN
 `message_update`（文本增量）不记录，避免刷爆；其他事件都记原文，单行截断 6000 字符。
 
 > 报告问题直接把「复制全部」的内容贴出来即可 —— 里面有启动命令、原始错误、stderr，一般一眼能定位。
+
+## 工具权限（为什么 pi 说「没有 bash」）
+
+pi 内置工具：`read` `bash` `edit` `write` `grep` `find` `ls`。
+面板会把设置里的勾选拼成 `--tools <列表>` 传给 pi —— **没勾 bash 的会话里 pi 就没有 shell**，
+于是出现「无 bash 工具」、连目录都列不了（`EISDIR`）、跑不了 `python tools/workspace.py init`。
+
+设置 → Pi Panel → **工具权限**：7 个工具逐个勾选 + 三个预设：
+
+| 预设 | 值 | 效果 |
+|---|---|---|
+| 只读 | `read,grep,find,ls` | 只能看 |
+| 读写 | `read,write,edit,grep,find,ls` | 能改文件，不能跑命令 |
+| 全部（含 bash） | `read,write,edit,grep,find,ls,bash` | 等同 pi 官方默认 |
+
+- 默认值已改为「全部（含 bash）」；旧默认 `read,edit,write`（缺 bash/grep/find/ls）会在加载时**自动升级**
+- 面板启动 pi 时若发现白名单不含 bash，会在聊天里提示，🐞 里也会标注 `⚠️ 无 bash`
+- 留空 = 不传 `--tools`，即 pi 默认可用的全部工具

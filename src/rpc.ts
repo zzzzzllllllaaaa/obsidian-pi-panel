@@ -82,29 +82,40 @@ export class PiRpcClient {
     }
 
     this.log("info", `进程已启动 pid=${this.child?.pid ?? "?"}`);
+    const child = this.child;
+    // 旧进程的退出事件可能在新进程启动之后才到达 —— 用实例判断，避免把新进程当成旧的
+    const stale = () => this.child !== null && this.child !== child;
 
-    this.child.on("error", (err: any) => {
+    child.on("error", (err: any) => {
+      if (stale()) {
+        this.log("info", `忽略旧进程 error：${String(err?.message || err)}`);
+        return;
+      }
       this.child = null;
       this.log("error", `进程 error：${String(err?.message || err)}`);
       this.opts.onError(String(err?.message || err));
     });
-    this.child.on("exit", (code: number | null, signal: string | null) => {
+    child.on("exit", (code: number | null, signal: string | null) => {
+      if (stale()) {
+        this.log("info", `忽略旧进程退出事件 code=${code} signal=${signal}`);
+        return;
+      }
       this.child = null;
       this.log("info", `进程退出 code=${code} signal=${signal}${this.expectedStop ? `（插件主动：${this.stopReason || "重启/关闭"}）` : ""}`);
       this.opts.onExit(code, signal);
     });
-    this.child.stdout?.on("data", (chunk: any) => this.consume(chunk));
-    this.child.stderr?.on("data", (chunk: any) => {
+    child.stdout?.on("data", (chunk: any) => this.consume(chunk));
+    child.stderr?.on("data", (chunk: any) => {
       const text = String(chunk?.toString?.() || chunk || "").trim();
       if (text) {
         this.log("stderr", text);
         this.opts.onStderr(text);
       }
     });
-    this.child.stdin?.on("error", (e: any) => {
+    child.stdin?.on("error", (e: any) => {
       this.log("error", `stdin 写入错误：${String(e?.message || e)}`);
     });
-    this.child.stdin?.on("close", () => this.log("info", "stdin 已关闭"));
+    child.stdin?.on("close", () => this.log("info", "stdin 已关闭"));
 
     return true;
   }
