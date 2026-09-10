@@ -8,6 +8,14 @@ import {
 import { PiRpcClient } from "./rpc";
 import { PiPanelSettings, PiSettingsModal } from "./settings";
 import { listSessions, PiSessionInfo } from "./sessions";
+import {
+  loadModelsFile,
+  modelKey,
+  ModelInfo,
+  ModelManagerModal,
+  ModelPickerModal,
+  validateModelsFile,
+} from "./models";
 
 export const VIEW_TYPE_PI_PANEL = "pi-panel-view";
 
@@ -199,8 +207,10 @@ export class PiPanelView extends ItemView {
     const txt = head.createDiv("pi-head-txt");
     const title = txt.createDiv("pi-title");
     title.setText("Pi Agent");
-    this.modelChip = txt.createDiv("pi-sub pi-muted");
+    this.modelChip = txt.createDiv("pi-sub pi-muted pi-model-chip");
     this.modelChip.setText("未连接");
+    this.modelChip.title = "点击切换模型";
+    this.modelChip.addEventListener("click", () => void this.openModelPicker());
 
     const actions = head.createDiv("pi-head-actions");
     this.statusPill = actions.createSpan("pi-pill");
@@ -312,6 +322,8 @@ export class PiPanelView extends ItemView {
     }
     const tools = String(this.settings.piAllowedTools || "").trim();
     if (tools) args.push("--tools", tools);
+    const defModel = String(this.settings.defaultModel || "").trim();
+    if (defModel && !this.selectedSession) args.push("--model", defModel);
 
     const vault = this.workingDir();
     const cwd = this.effectiveCwd();
@@ -366,6 +378,10 @@ export class PiPanelView extends ItemView {
           this.applyState(evt.data);
         } else if (evt.command === "get_messages" && evt.data) {
           this.renderHistory(evt.data.messages);
+        } else if (evt.command === "set_model" && evt.data) {
+          const d = evt.data?.model || evt.data;
+          this.systemLine(`已切换模型：${(d?.provider ? d.provider + "/" : "") + (d?.id || "?")}`, "pi-sys");
+          this.rpc?.getState();
         }
         break;
 
@@ -1065,6 +1081,113 @@ export class PiPanelView extends ItemView {
       return;
     }
     new Notice("pi 未启动：发送第一条消息时会自动启动");
+  }
+
+  /** 历史会话选择器 / 模型选择器 —— 头部 chip 点击调用 */
+  private async openModelPicker() {
+    const current = this.currentModelKey();
+    let models: ModelInfo[] = [];
+    let note = "";
+    if (this.rpc?.running) {
+      try {
+        const data = await this.rpc.getAvailableModels();
+        models = (data?.models || []).map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          provider: m.provider,
+          api: m.api,
+          reasoning: m.reasoning,
+          contextWindow: m.contextWindow,
+          maxTokens: m.maxTokens,
+          source: "builtin",
+        }));
+      } catch (e: any) {
+        note = `读取可用模型失败（${String(e?.message || e)}），下面是 models.json 里的自定义模型`;
+      }
+    }
+    if (!models.length) {
+      models = this.modelsFromConfig();
+      if (!note) note = "pi 未运行：下面是 models.json 里的自定义模型（启动 pi 后可选内置模型）";
+    }
+    if (note) new Notice(note, 6000);
+
+    new ModelPickerModal(this.app, {
+      current,
+      load: async () => models,
+      favorites: this.settings.favoriteModels || [],
+      onPick: (provider, id) => void this.pickModel(provider, id),
+      onToggleFavorite: (key) => void this.toggleFavorite(key),
+      onManage: () => this.openModelManager(),
+    }).open();
+  }
+
+  /** 从 ~/.pi/agent/models.json 读自定义模型（pi 未运行时的傅底） */
+  private modelsFromConfig(): ModelInfo[] {
+    try {
+      const { data, error } = loadModelsFile();
+      if (error) return [];
+      const out: ModelInfo[] = [];
+      for (const [provider, p] of Object.entries(data.providers)) {
+        for (const m of p.models || []) {
+          out.push({
+            id: m.id,
+            name: m.name,
+            provider,
+            api: m.api || p.api,
+            reasoning: m.reasoning,
+            contextWindow: m.contextWindow,
+            maxTokens: m.maxTokens,
+            source: "config",
+          });
+        }
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  private currentModelKey(): { provider?: string; id?: string } {
+    const chip = this.modelChip?.getText?.() || "";
+    const first = chip.split(" · ")[0].trim();
+    const idx = first.lastIndexOf("/");
+    if (idx > 0) return { provider: first.slice(0, idx), id: first.slice(idx + 1) };
+    if (first && first !== "未连接" && first !== "unknown") return { id: first };
+    return {};
+  }
+
+  private async pickModel(provider: string, id: string) {
+    if (this.rpc?.running) {
+      try {
+        await this.rpc.setModel(provider, id);
+        this.settings.defaultModel = modelKey(provider, id);
+        await this.saveSettings();
+        return;
+      } catch (e: any) {
+        new Notice(`切换模型失败：${String(e?.message || e)}（会记为默认值，下条消息重启生效）`, 6000);
+      }
+    }
+    // pi 未运行 / 切换失败 → 记默认值，下次启动用 --model
+    this.settings.defaultModel = modelKey(provider, id);
+    await this.saveSettings();
+    this.systemLine(`下次启动使用模型：${this.settings.defaultModel}`, "pi-sys");
+  }
+
+  private async toggleFavorite(key: string) {
+    const list = [...(this.settings.favoriteModels || [])];
+    const i = list.indexOf(key);
+    if (i >= 0) list.splice(i, 1);
+    else list.push(key);
+    this.settings.favoriteModels = list;
+    await this.saveSettings();
+  }
+
+  private openModelManager() {
+    new ModelManagerModal(this.app, () => {
+      // models.json 改完：重读配置，pi 下一轮 get_available_models 会拿到新列表
+      const errs = validateModelsFile(loadModelsFile().data);
+      if (errs.length) new Notice(`models.json 仍有校验问题：${errs[0]}`, 8000);
+    }).open();
   }
 
   private openSessionPicker() {

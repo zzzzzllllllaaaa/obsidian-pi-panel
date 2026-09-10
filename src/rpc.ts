@@ -21,6 +21,8 @@ export class PiRpcClient {
   private child: any = null;
   private buffer = "";
   private opts: PiRpcOptions;
+  private pending = new Map<string, Array<{ resolve: (v: any) => void; reject: (e: any) => void }>>();
+  private seq = 0;
 
   constructor(opts: PiRpcOptions) {
     this.opts = opts;
@@ -87,6 +89,15 @@ export class PiRpcClient {
       } catch {
         continue;
       }
+      if (evt?.type === "response" && typeof evt.command === "string") {
+        const waiters = this.pending.get(evt.command);
+        if (waiters && waiters.length) {
+          const w = waiters.shift()!;
+          if (waiters.length === 0) this.pending.delete(evt.command);
+          if (evt.success === false) w.reject(new Error(String(evt.error || `${evt.command} 失败`)));
+          else w.resolve(evt.data);
+        }
+      }
       try {
         this.opts.onEvent(evt);
       } catch (e) {
@@ -117,8 +128,39 @@ export class PiRpcClient {
   getMessages() { this.send({ type: "get_messages" }); }
   respond(obj: any) { this.send({ type: "extension_ui_response", ...obj }); }
 
+  /** 请求-响应式调用（按 command 配对响应） */
+  request(command: string, extra: Record<string, any> = {}, timeoutMs = 20000): Promise<any> {
+    if (!this.running) return Promise.reject(new Error("pi 未运行"));
+    return new Promise((resolve, reject) => {
+      const waiters = this.pending.get(command) || [];
+      const entry = { resolve, reject };
+      waiters.push(entry);
+      this.pending.set(command, waiters);
+      const ok = this.send({ id: `req-${++this.seq}`, type: command, ...extra });
+      if (!ok) {
+        this.pending.set(command, (this.pending.get(command) || []).filter((x) => x !== entry));
+        reject(new Error("写入 pi 进程失败（进程可能已退出）"));
+        return;
+      }
+      setTimeout(() => {
+        const cur = this.pending.get(command);
+        if (!cur || !cur.includes(entry)) return;
+        this.pending.set(command, cur.filter((x) => x !== entry));
+        reject(new Error(`${command} 超时（${timeoutMs}ms）`));
+      }, timeoutMs);
+    });
+  }
+
+  getAvailableModels(): Promise<any> { return this.request("get_available_models"); }
+  setModel(provider: string, modelId: string): Promise<any> { return this.request("set_model", { provider, modelId }); }
+  switchSession(sessionPath: string): Promise<any> { return this.request("switch_session", { sessionPath }); }
+
   stop() {
     if (!this.child) return;
+    for (const waiters of this.pending.values()) {
+      for (const w of waiters) w.reject(new Error("pi 进程已退出"));
+    }
+    this.pending.clear();
     try { this.child.stdin?.end(); } catch { /* noop */ }
     try { this.child.kill(); } catch { /* noop */ }
     this.child = null;

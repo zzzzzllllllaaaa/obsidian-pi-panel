@@ -518,3 +518,86 @@
 
 .pi-session-meta { font-size: 10.5px; color: var(--text-faint); margin-top: 2px; }
 .pi-session-empty { font-size: 12px; color: var(--text-muted); padding: 8px 0; }
+
+/* ── 模型选择 / 管理 ──────────────────────────────────────────────────── */
+
+.pi-model-chip { cursor: pointer; }
+.pi-model-chip:hover { color: var(--text-normal); text-decoration: underline dotted; }
+
+.pi-model-bar { display: flex; gap: 6px; margin-bottom: 10px; }
+.pi-model-filter { flex: 1 1 auto; }
+.pi-model-bar button { font-size: 12px; padding: 3px 10px; }
+
+.pi-model-list {
+  max-height: 56vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pi-model-sec {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 8px 0 2px;
+}
+
+.pi-model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.pi-model-row:hover { background: var(--background-modifier-hover); }
+.pi-model-row.is-current { border-color: var(--interactive-accent); }
+.pi-model-row-inline { cursor: default; margin-left: 12px; }
+
+.pi-model-main { flex: 1 1 auto; min-width: 0; }
+.pi-model-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-model-meta { font-size: 10.5px; color: var(--text-faint); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-model-meta.pi-bad { color: var(--text-error); }
+.pi-model-cur { font-size: 10px; color: var(--interactive-accent); flex: 0 0 auto; }
+
+.pi-star {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-faint);
+  padding: 0 2px;
+}
+.pi-star:hover { color: var(--text-accent); }
+
+.pi-prov-card { border: 1px solid var(--background-modifier-border); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
+.pi-prov-head { display: flex; align-items: flex-start; gap: 8px; }
+.pi-prov-info { flex: 1 1 auto; min-width: 0; }
+.pi-prov-acts { flex: 0 0 auto; display: flex; gap: 4px; }
+.pi-prov-acts button { font-size: 11px; padding: 2px 8px; }
+
+.pi-model-warn, .pi-model-err {
+  font-size: 11.5px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+}
+.pi-model-warn { background: var(--background-secondary); color: var(--text-muted); }
+.pi-model-err { background: rgba(var(--color-red-rgb), .12); color: var(--text-error); }
+
+.pi-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+.pi-field-label { font-size: 11.5px; color: var(--text-muted); }
+.pi-field-input { width: 100%; }
+.pi-field-note { font-size: 11px; color: var(--text-faint); margin-bottom: 6px; }
+.pi-field-check { flex-direction: row; align-items: center; gap: 6px; }
+.pi-field-check label { font-size: 12px; }
+
+.pi-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }

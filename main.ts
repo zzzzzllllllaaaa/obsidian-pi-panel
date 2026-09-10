@@ -1,6 +1,7 @@
-import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { PiPanelView, VIEW_TYPE_PI_PANEL } from "./src/view";
 import { DEFAULT_SETTINGS, PiPanelSettings } from "./src/settings";
+import { loadModelsFile, ModelManagerModal, validateModelsFile } from "./src/models";
 
 export default class PiPanelPlugin extends Plugin {
   settings: PiPanelSettings = { ...DEFAULT_SETTINGS };
@@ -178,6 +179,26 @@ class PiSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }
         }));
+
+    new Setting(containerEl)
+      .setName("默认模型")
+      .setDesc("启动 pi 时传给 --model，格式 provider/id（如 xianyu/deepseek-v4-flash）。留空 = 用 pi 自己的设置。面板里点模型名可即时切换")
+      .addText(t => t
+        .setPlaceholder("provider/model-id")
+        .setValue(this.plugin.settings.defaultModel)
+        .onChange(async (v) => {
+          this.plugin.settings.defaultModel = v.trim();
+          await this.plugin.saveSettings();
+          this.bouncePanels();
+        }))
+      .addExtraButton(b => b
+        .setIcon("settings-2")
+        .setTooltip("管理模型（编辑 ~/.pi/agent/models.json）")
+        .onClick(() => new ModelManagerModal(this.app, () => {
+          const errs = validateModelsFile(loadModelsFile().data);
+          if (errs.length) new Notice(`models.json 校验问题：${errs[0]}`, 8000);
+          this.bouncePanels();
+        }).open()));
 
     new Setting(containerEl)
       .setName("Vault 根目录（只读）")

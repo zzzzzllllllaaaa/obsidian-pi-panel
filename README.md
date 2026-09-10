@@ -51,6 +51,7 @@ cp main.js manifest.json styles.css "<vault>/.obsidian/plugins/pi-panel/"
 | 内联笔记上限 | 超过则只给 `@路径`，默认 20000 字符 |
 | 工作目录 | pi 的 cwd，留空 = vault 根。可与笔记目录分开（如 `E:\piganet`） |
 | 附加系统提示文件 | 传给 `--append-system-prompt` 的文件，如 `E:\piganet\AGENTS.md` |
+| 默认模型 | 启动时 `--model provider/id`；面板里点模型名可即时切换 |
 
 ## 上下文 / 规则为什么"不生效"
 
@@ -82,3 +83,20 @@ pi 的 cwd 可以是项目目录（`E:\piganet`，这样能读到那边的 `AGEN
 此时插件会自动：
 1. 追加系统提示：`Obsidian 笔记库(vault)根目录: <vault> / 本次工作目录: <cwd>`，并说明笔记用绝对路径
 2. 引用笔记/选区时改用**绝对路径**（cwd=vault 时仍用相对路径）
+
+## 模型管理
+
+面板头部那行模型名（如 `deepseek-v4-flash · persist · 3 msgs`）**点一下**打开模型选择器：
+
+- 列表来自 pi 的 `get_available_models`（含内置 + `models.json` 自定义），按 provider 分组
+- `☆` 收藏 → 下次置顶显示「常用」区
+- 点一行 → RPC `set_model` **即时切换**（不重启进程），同时记为默认值供下次启动
+- pi 未启动时也能打开（只列 models.json 里的自定义模型），选中的会存为默认值，下次启动生效
+- 顶部「管理模型…」→ 增删改 `~/.pi/agent/models.json`
+
+管理面板支持：
+- **新增供应商**：名字 / api 类型 / baseUrl / apiKey，以及 `compat.supportsDeveloperRole=false` 勾选项（中转常踩的 400：reasoning 模型用 developer 角色发 system prompt）
+- **新增 / 编辑 / 删除模型**：id、显示名、api、contextWindow、maxTokens、reasoning、图片输入、cost
+- 保存前跑本地校验，**校验不过就拒绝写盘**，并自动备份成 `models.json.bak-<时间戳>`
+
+> ⚠️ 为什么必须校验：pi 的 ModelRegistry 遇到 models.json 里**任何一个**模型不合法，会**丢弃整个文件**的所有自定义模型（无部分加载、界面无报错，只表现为模型列表缩水）。其中最坑的是 `cost`：要么四个字段全填，要么整个不写——`cost: {}` 会让整个文件失效。

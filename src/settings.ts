@@ -1,4 +1,5 @@
 import { App, Modal, Setting } from "obsidian";
+import { ModelManagerModal } from "./models";
 
 export type SessionMode = "ephemeral" | "persist" | "resume";
 
@@ -15,6 +16,10 @@ export interface PiPanelSettings {
   cwd: string;
   /** 附加系统提示文件（--append-system-prompt），如 E:\\piganet\\AGENTS.md */
   extraSystemPromptPath: string;
+  /** 启动 pi 时用的默认模型（--model），格式 provider/id；留空 = pi 自己记着的 */
+  defaultModel: string;
+  /** 常用模型（选择器置顶），格式 provider/id */
+  favoriteModels: string[];
   /** 旧字段，仅用于配置迁移 */
   persistSession?: boolean;
 }
@@ -26,6 +31,8 @@ export const DEFAULT_SETTINGS: PiPanelSettings = {
   inlineMaxChars: 20000,
   cwd: "",
   extraSystemPromptPath: "",
+  defaultModel: "",
+  favoriteModels: [],
 };
 
 export class PiSettingsModal extends Modal {
@@ -96,6 +103,18 @@ export class PiSettingsModal extends Modal {
           const n = parseInt(v, 10);
           if (!isNaN(n) && n > 0) this.settings.inlineMaxChars = n;
         }));
+
+    new Setting(contentEl)
+      .setName("默认模型")
+      .setDesc("启动 pi 时传给 --model，格式 provider/id（如 xianyu/deepseek-v4-flash）。留空 = 用 pi 自己的设置。面板头部的模型名字点一下可即时切换")
+      .addText(t => t
+        .setPlaceholder("provider/model-id")
+        .setValue(this.settings.defaultModel)
+        .onChange(v => { this.settings.defaultModel = v.trim(); }))
+      .addExtraButton(b => b
+        .setIcon("list")
+        .setTooltip("管理模型（models.json）")
+        .onClick(() => { new ModelManagerModal(this.app, () => {}).open(); }));
 
     new Setting(contentEl)
       .setName("Vault 根目录（只读）")
