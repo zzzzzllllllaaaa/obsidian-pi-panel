@@ -47,9 +47,9 @@ cp main.js manifest.json styles.css "<vault>/.obsidian/plugins/pi-panel/"
 |---|---|
 | pi 可执行文件 | 默认 `pi`，可用绝对路径 |
 | 允许的工具 | `--tools` 白名单，默认 `read,edit,write`；留空 = 全部工具（含 bash） |
-| 保留会话 | 开启后不加 `--no-session` |
+| 会话 | `新会话并存盘` / `继续上次(--continue)` / `不保存(--no-session)` |
 | 内联笔记上限 | 超过则只给 `@路径`，默认 20000 字符 |
-| 工作目录 | pi 的 cwd，留空 = vault 根。pi 只在 cwd 及父目录找 `AGENTS.md` |
+| 工作目录 | pi 的 cwd，留空 = vault 根。可与笔记目录分开（如 `E:\piganet`） |
 | 附加系统提示文件 | 传给 `--append-system-prompt` 的文件，如 `E:\piganet\AGENTS.md` |
 
 ## 上下文 / 规则为什么"不生效"
@@ -63,3 +63,22 @@ pi 启动时按 `~/.pi/agent/AGENTS.md` → 从 cwd 向上逐级父目录 → cw
 
 改完设置会自动重启面板里的 pi 进程，下一条消息生效。
 > 用 `--tools read,edit,write` 时 pi 没有 `bash`，规则里 `python tools/workspace.py init` 这类步骤跑不了；要跑就把它加进白名单。
+
+## 历史会话
+
+头部 `🕘` 按钮打开会话列表（扫 `~/.pi/agent/sessions/<cwd slug>/*.jsonl`）：
+
+- 行显示：时间 / 首条用户消息摘要 / 消息数 / session id；cwd 不同的会话会额外标注
+- 点一行 → 以 `--session <file>` 重启 pi，并自动回放该会话的历史消息
+- 顶部按钮：`新会话` / `继续上次（--continue）`
+- 该 cwd 没有会话文件时，会回退列出最近活跃的其它工作目录（列表里会标出 cwd）
+
+会话文件位置规则：`~/.pi/agent/sessions/` + `--` + cwd（`:` `\` `/` 全换成 `-`）+ `--`
+，例如 `E:\piganet` → `--E--piganet--`。
+
+## 笔记目录与工作目录分离
+
+pi 的 cwd 可以是项目目录（`E:\piganet`，这样能读到那边的 `AGENTS.md`），笔记仍在 vault。
+此时插件会自动：
+1. 追加系统提示：`Obsidian 笔记库(vault)根目录: <vault> / 本次工作目录: <cwd>`，并说明笔记用绝对路径
+2. 引用笔记/选区时改用**绝对路径**（cwd=vault 时仍用相对路径）

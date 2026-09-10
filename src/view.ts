@@ -3,10 +3,11 @@
  */
 
 import {
-  ItemView, WorkspaceLeaf, Platform, MarkdownView, TFile, Notice, setIcon, MarkdownRenderer,
+  ItemView, WorkspaceLeaf, Platform, MarkdownView, TFile, Notice, setIcon, MarkdownRenderer, Modal,
 } from "obsidian";
 import { PiRpcClient } from "./rpc";
 import { PiPanelSettings, PiSettingsModal } from "./settings";
+import { listSessions, PiSessionInfo } from "./sessions";
 
 export const VIEW_TYPE_PI_PANEL = "pi-panel-view";
 
@@ -39,6 +40,72 @@ const TOOL_ICONS: Record<string, string> = {
   todo: "list-checks",
 };
 
+interface SessionPickerCallbacks {
+  onPick: (info: PiSessionInfo) => void;
+  onNew: () => void;
+  onResumeLast: () => void;
+}
+
+/** 历史会话选择器：列出当前 cwd 的 pi 会话文件 */
+export class PiSessionPickerModal extends Modal {
+  private cwd: string;
+  private items: PiSessionInfo[];
+  private cb: SessionPickerCallbacks;
+
+  constructor(app: any, cwd: string, items: PiSessionInfo[], cb: SessionPickerCallbacks) {
+    super(app);
+    this.cwd = cwd;
+    this.items = items;
+    this.cb = cb;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("pi-session-modal");
+    contentEl.createEl("h3", { text: "历史会话" });
+    contentEl.createDiv({ cls: "pi-session-cwd", text: `工作目录：${this.cwd || "(未知)"}` });
+
+    const top = contentEl.createDiv("pi-session-top");
+    const mkBtn = (label: string, fn: () => void) => {
+      const b = top.createEl("button", { text: label });
+      b.addEventListener("click", () => { this.close(); fn(); });
+      return b;
+    };
+    mkBtn("新会话", () => this.cb.onNew());
+    mkBtn("继续上次（--continue）", () => this.cb.onResumeLast());
+
+    const list = contentEl.createDiv("pi-session-list");
+    if (this.items.length === 0) {
+      list.createDiv({ cls: "pi-session-empty", text: "该工作目录下没有已保存的会话。先聊几轮（会话策略=新会话并存盘），下次就能在这里看到。" });
+      return;
+    }
+
+    for (const it of this.items) {
+      const row = list.createDiv("pi-session-row");
+      const time = row.createDiv("pi-session-time");
+      time.setText(this.formatTime(it.mtimeMs));
+      const body = row.createDiv("pi-session-body");
+      body.createDiv({ cls: "pi-session-preview", text: it.preview || "(无文本消息)" });
+      const meta = body.createDiv("pi-session-meta");
+      const sameCwd = it.cwd === this.cwd;
+      meta.setText(`${it.messageCount} msgs · ${it.id.slice(0, 8)}${sameCwd ? "" : " · " + it.cwd}`);
+      row.addEventListener("click", () => { this.close(); this.cb.onPick(it); });
+    }
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+
+  private formatTime(ms: number): string {
+    if (!ms) return "?";
+    const d = new Date(ms);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+}
+
 export class PiPanelView extends ItemView {
   private settings: PiPanelSettings;
   private saveSettings: () => Promise<void>;
@@ -49,6 +116,8 @@ export class PiPanelView extends ItemView {
 
   private lastMarkdownView: MarkdownView | null = null;
   private attachments: Attachment[] = [];
+  /** 用户选定的历史会话文件；null = 按设置里会话策略开会话 */
+  private selectedSession: string | null = null;
 
   // DOM
   private statusPill!: HTMLElement;
@@ -67,6 +136,7 @@ export class PiPanelView extends ItemView {
   private currentThink: { wrap: HTMLDetailsElement; body: HTMLElement; text: string } | null = null;
   private toolCards = new Map<string, { el: HTMLElement; out: HTMLElement; text: string; startedAt: number }>();
   private pinned = true;
+  private pendingHistory = false;
 
   constructor(leaf: WorkspaceLeaf, settings: PiPanelSettings, saveSettings: () => Promise<void>) {
     super(leaf);
@@ -144,6 +214,7 @@ export class PiPanelView extends ItemView {
       b.addEventListener("click", onClick);
       return b;
     };
+    iconBtn("history", "历史会话", () => this.openSessionPicker());
     iconBtn("plus", "新会话", () => this.newSession());
     iconBtn("eraser", "清空界面", () => this.clearChat());
     iconBtn("settings", "设置", () => this.openSettings());
@@ -232,13 +303,26 @@ export class PiPanelView extends ItemView {
     if (this.rpc?.running) return true;
 
     const args = ["--mode", "rpc"];
-    if (!this.settings.persistSession) args.push("--no-session");
+    if (this.selectedSession) {
+      args.push("--session", this.selectedSession);
+    } else if (this.settings.sessionMode === "ephemeral") {
+      args.push("--no-session");
+    } else if (this.settings.sessionMode === "resume") {
+      args.push("--continue");
+    }
     const tools = String(this.settings.piAllowedTools || "").trim();
     if (tools) args.push("--tools", tools);
+
+    const vault = this.workingDir();
+    const cwd = this.effectiveCwd();
+    if (vault && cwd && cwd !== vault) {
+      args.push(
+        "--append-system-prompt",
+        `Obsidian 笔记库(vault)根目录: ${vault}\n本次工作目录: ${cwd}\n所有笔记都在 vault 下；引用/读取笔记时请用绝对路径。`,
+      );
+    }
     const extra = String(this.settings.extraSystemPromptPath || "").trim();
     if (extra) args.push("--append-system-prompt", extra);
-
-    const cwd = String(this.settings.cwd || "").trim() || this.workingDir();
     this.rpc = new PiRpcClient({
       exe: this.settings.piExecutable || "pi",
       args,
@@ -259,7 +343,16 @@ export class PiPanelView extends ItemView {
     const ok = this.rpc.start();
     if (!ok) return false;
     this.rpc.getState();
+    if (this.selectedSession) {
+      this.pendingHistory = true;
+      this.rpc.getMessages();
+    }
     return true;
+  }
+
+  /** pi 的实际工作目录（可与 vault 分开） */
+  private effectiveCwd(): string {
+    return String(this.settings.cwd || "").trim() || this.workingDir();
   }
 
   // ── 事件 ──────────────────────────────────
@@ -271,6 +364,8 @@ export class PiPanelView extends ItemView {
           this.systemLine(`命令失败：${evt.command || "?"} — ${evt.error || ""}`, "pi-err");
         } else if (evt.command === "get_state" && evt.data) {
           this.applyState(evt.data);
+        } else if (evt.command === "get_messages" && evt.data) {
+          this.renderHistory(evt.data.messages);
         }
         break;
 
@@ -341,9 +436,43 @@ export class PiPanelView extends ItemView {
     const model = data?.model?.id || data?.model?.name || "unknown";
     const thinking = data?.thinkingLevel ? ` · ${data.thinkingLevel}` : "";
     const count = typeof data?.messageCount === "number" ? ` · ${data.messageCount} msgs` : "";
-    this.modelChip.setText(`${model}${thinking}${count}`);
+    const sid = data?.sessionId ? ` · ${String(data.sessionId).slice(0, 8)}` : data?.sessionFile ? "" : " · 不保存";
+    this.modelChip.setText(`${model}${thinking}${count}${sid}`);
     if (data?.isStreaming) this.setStatus("streaming");
     else if (this.status !== "error") this.setStatus("ready");
+  }
+
+  /** 恢复历史会话时把消息回放到界面 */
+  private renderHistory(messages: any[]) {
+    if (!this.pendingHistory) return;
+    this.pendingHistory = false;
+    if (!Array.isArray(messages) || messages.length === 0) return;
+
+    this.chatEl.empty();
+    this.buildEmptyState();
+    let shown = 0;
+    for (const msg of messages) {
+      const role = msg?.role;
+      const content = msg?.content;
+      const text = typeof content === "string"
+        ? content
+        : Array.isArray(content)
+          ? content.filter((c: any) => c?.type === "text").map((c: any) => c.text || "").join("")
+          : "";
+      if (!text) continue;
+      if (role === "user") {
+        this.userMessage(text, []);
+        shown++;
+      } else if (role === "assistant") {
+        const col = this.beginTurn();
+        const el = col.createDiv("pi-md");
+        this.renderMarkdown(el, text);
+        this.currentCol = null;
+        shown++;
+      }
+    }
+    if (shown) this.systemLine(`已恢复 ${shown} 条历史消息`, "pi-sys");
+    this.scrollToBottom(true);
   }
 
   // ── 渲染：消息 ─────────────────────────────
@@ -789,26 +918,35 @@ export class PiPanelView extends ItemView {
     return this.app.workspace.getActiveFile() || this.markdownView()?.file || null;
   }
 
-  private addCurrentNote() {
+  private async addCurrentNote() {
     const file = this.currentFile();
     if (!file) {
       new Notice("没有找到笔记：先在主区域打开一篇笔记，或点开任意 md 文件");
       return;
     }
-    this.app.vault.read(file).then(content => {
+    const refPath = this.noteRefPath(file);
+    try {
+      const content = await this.app.vault.read(file);
       const max = Number(this.settings.inlineMaxChars) || 20000;
-      const common = {
-        kind: "note" as const,
-        label: file.basename,
-        path: file.path,
-      };
+      const common = { kind: "note" as const, label: file.basename, path: refPath };
       if (content.length > max) {
-        this.addAttachment({ ...common, detail: `${file.path}（超长，pi 自行 read）`, truncated: true });
+        this.addAttachment({ ...common, detail: `${refPath}（超长，pi 自行 read）`, truncated: true });
         new Notice(`笔记超过 ${max} 字，只引用路径`);
         return;
       }
-      this.addAttachment({ ...common, content, detail: file.path });
-    }).catch((e: any) => new Notice(`读取笔记失败：${String(e?.message || e)}`));
+      this.addAttachment({ ...common, content, detail: refPath });
+    } catch (e: any) {
+      new Notice(`读取笔记失败：${String(e?.message || e)}`);
+    }
+  }
+
+  /** cwd 与 vault 不同时，笔记引用要用绝对路径，否者 pi 的 read/@ 找不到 */
+  private noteRefPath(file: TFile | null): string {
+    if (!file) return "";
+    const vault = this.workingDir();
+    const cwd = this.effectiveCwd();
+    if (!vault || !cwd || cwd === vault) return file.path;
+    return `${vault}\\${file.path.split("/").join("\\")}`;
   }
 
   private addSelection() {
@@ -818,15 +956,16 @@ export class PiPanelView extends ItemView {
       new Notice("没有选中文本：在主区域选中一段文字再点「选区」");
       return;
     }
-    const file = view?.file;
+    const file = view?.file || null;
     const line = view?.editor?.getCursor?.("from")?.line;
-    const label = file ? file.path.split("/").pop() || file.path : "选区";
-    const loc = file ? `${file.path}${typeof line === "number" ? `:${line + 1}` : ""}` : "";
+    const refPath = this.noteRefPath(file);
+    const label = file ? file.basename : "选区";
+    const loc = refPath ? `${refPath}${typeof line === "number" ? `:${line + 1}` : ""}` : "";
     this.addAttachment({
       kind: "selection",
       label: `${label}${typeof line === "number" ? `:${line + 1}` : ""}`,
       detail: loc,
-      path: file?.path,
+      path: refPath,
       content: sel,
     });
   }
@@ -912,11 +1051,53 @@ export class PiPanelView extends ItemView {
   }
 
   private newSession() {
+    if (this.selectedSession) {
+      // 从历史会话切回“全新”：丢掉 --session 重启进程
+      this.selectedSession = null;
+      this.resetPiProcess();
+      this.clearChat();
+      this.systemLine("已开始新会话", "pi-sys");
+      return;
+    }
     if (this.rpc?.running) {
       this.rpc.newSession();
       this.systemLine("已开始新会话", "pi-sys");
       return;
     }
     new Notice("pi 未启动：发送第一条消息时会自动启动");
+  }
+
+  private openSessionPicker() {
+    const cwd = this.effectiveCwd();
+    let items: PiSessionInfo[] = [];
+    try {
+      items = listSessions(cwd, 60);
+    } catch (e: any) {
+      new Notice(`读取会话列表失败：${String(e?.message || e)}`);
+      return;
+    }
+    new PiSessionPickerModal(this.app, cwd, items, {
+      onPick: (info: PiSessionInfo) => {
+        this.selectedSession = info.file;
+        this.resetPiProcess();
+        this.clearChat();
+        this.systemLine(`已切换会话：${info.preview || info.id.slice(0, 8)}`, "pi-sys");
+        this.ensureRpc();
+      },
+      onNew: () => {
+        this.selectedSession = null;
+        this.resetPiProcess();
+        this.clearChat();
+        this.systemLine("已开始新会话", "pi-sys");
+      },
+      onResumeLast: () => {
+        this.selectedSession = null;
+        this.settings.sessionMode = "resume";
+        void this.saveSettings();
+        this.resetPiProcess();
+        this.clearChat();
+        this.systemLine("已切回「继续上次」模式", "pi-sys");
+      },
+    }).open();
   }
 }

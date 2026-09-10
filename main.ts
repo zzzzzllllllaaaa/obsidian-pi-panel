@@ -72,6 +72,11 @@ export default class PiPanelPlugin extends Plugin {
   async loadSettings() {
     const raw = await this.loadData();
     Object.assign(this.settings, DEFAULT_SETTINGS, raw || {});
+    // 旧配置迁移：persistSession:boolean → sessionMode
+    if (raw && typeof raw.persistSession === "boolean" && raw.sessionMode === undefined) {
+      this.settings.sessionMode = raw.persistSession ? "persist" : "ephemeral";
+    }
+    delete (this.settings as any).persistSession;
   }
 
   async saveSettings() {
@@ -124,13 +129,17 @@ class PiSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName("保留会话")
-      .setDesc("开启后不加 --no-session，pi 会把会话写入自己的 session 目录")
-      .addToggle(t => t
-        .setValue(this.plugin.settings.persistSession)
+      .setName("会话")
+      .setDesc("启动 pi 时的会话策略；面板头部「历史」按钮可切旧会话")
+      .addDropdown(d => d
+        .addOption("persist", "新会话并存盘")
+        .addOption("resume", "继续上次（--continue）")
+        .addOption("ephemeral", "不保存（--no-session）")
+        .setValue(this.plugin.settings.sessionMode)
         .onChange(async (v) => {
-          this.plugin.settings.persistSession = v;
+          this.plugin.settings.sessionMode = v as any;
           await this.plugin.saveSettings();
+          this.bouncePanels();
         }));
 
     new Setting(containerEl)

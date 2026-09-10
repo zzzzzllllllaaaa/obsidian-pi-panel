@@ -1,24 +1,28 @@
 import { App, Modal, Setting } from "obsidian";
 
+export type SessionMode = "ephemeral" | "persist" | "resume";
+
 export interface PiPanelSettings {
   /** pi 可执行文件；Obsidian 找不到命令时填绝对路径 */
   piExecutable: string;
   /** 传给 pi --tools 的白名单，逗号分隔；留空 = 全部工具（含 bash） */
   piAllowedTools: string;
-  /** 保留会话（不加 --no-session），pi 会写自己的 session 文件 */
-  persistSession: boolean;
+  /** 会话策略：ephemeral=--no-session / persist=新会话并存盘 / resume=--continue 继续上次 */
+  sessionMode: SessionMode;
   /** 引用笔记内联上限（字符），超过则只给 @路径 */
   inlineMaxChars: number;
-  /** pi 的工作目录；留空 = vault 根 */
+  /** pi 的工作目录；留空 = vault 根（可与笔记目录分开） */
   cwd: string;
   /** 附加系统提示文件（--append-system-prompt），如 E:\\piganet\\AGENTS.md */
   extraSystemPromptPath: string;
+  /** 旧字段，仅用于配置迁移 */
+  persistSession?: boolean;
 }
 
 export const DEFAULT_SETTINGS: PiPanelSettings = {
   piExecutable: "pi",
   piAllowedTools: "read,edit,write",
-  persistSession: false,
+  sessionMode: "persist",
   inlineMaxChars: 20000,
   cwd: "",
   extraSystemPromptPath: "",
@@ -58,11 +62,14 @@ export class PiSettingsModal extends Modal {
         .onChange(v => { this.settings.piAllowedTools = v.trim(); }));
 
     new Setting(contentEl)
-      .setName("保留会话")
-      .setDesc("开启后不加 --no-session，pi 会把会话写入自己的 session 目录（下次可 --continue 恢复）")
-      .addToggle(t => t
-        .setValue(this.settings.persistSession)
-        .onChange(v => { this.settings.persistSession = v; }));
+      .setName("会话")
+      .setDesc("每次启动 pi 时的会话策略。头部「历史」按钮可随时切到某个旧会话")
+      .addDropdown(d => d
+        .addOption("persist", "新会话并存盘")
+        .addOption("resume", "继续上次（--continue）")
+        .addOption("ephemeral", "不保存（--no-session）")
+        .setValue(this.settings.sessionMode)
+        .onChange(v => { this.settings.sessionMode = v as any; }));
 
     new Setting(contentEl)
       .setName("工作目录")
