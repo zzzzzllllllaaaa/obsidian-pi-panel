@@ -100,7 +100,7 @@ export class PiPanelView extends ItemView {
     this.chatEl.addEventListener("scroll", () => {
       const el = this.chatEl;
       this.pinned = el.scrollTop + el.clientHeight >= el.scrollHeight - 40;
-      this.jumpBtn.toggleClass("is-visible", !this.pinned);
+      this.jumpBtn?.toggleClass("is-visible", !this.pinned);
     });
 
     this.jumpBtn = root.createDiv("pi-jump");
