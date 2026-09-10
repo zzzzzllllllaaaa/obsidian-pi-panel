@@ -9,6 +9,10 @@ export interface PiPanelSettings {
   persistSession: boolean;
   /** 引用笔记内联上限（字符），超过则只给 @路径 */
   inlineMaxChars: number;
+  /** pi 的工作目录；留空 = vault 根 */
+  cwd: string;
+  /** 附加系统提示文件（--append-system-prompt），如 E:\\piganet\\AGENTS.md */
+  extraSystemPromptPath: string;
 }
 
 export const DEFAULT_SETTINGS: PiPanelSettings = {
@@ -16,6 +20,8 @@ export const DEFAULT_SETTINGS: PiPanelSettings = {
   piAllowedTools: "read,edit,write",
   persistSession: false,
   inlineMaxChars: 20000,
+  cwd: "",
+  extraSystemPromptPath: "",
 };
 
 export class PiSettingsModal extends Modal {
@@ -59,6 +65,22 @@ export class PiSettingsModal extends Modal {
         .onChange(v => { this.settings.persistSession = v; }));
 
     new Setting(contentEl)
+      .setName("工作目录")
+      .setDesc(`pi 的 cwd。留空 = vault 根（${this.cwd || "未知"}）。改这里可以带出目标目录的 AGENTS.md`)
+      .addText(t => t
+        .setPlaceholder(this.cwd)
+        .setValue(this.settings.cwd)
+        .onChange(v => { this.settings.cwd = v.trim(); }));
+
+    new Setting(contentEl)
+      .setName("附加系统提示文件")
+      .setDesc("传给 pi --append-system-prompt 的文件路径，如 E:\\piganet\\AGENTS.md。pi 只在 cwd 及其父目录找 AGENTS.md，面板默认 cwd 是 vault，找不到项目规则")
+      .addText(t => t
+        .setPlaceholder("E:\\piganet\\AGENTS.md")
+        .setValue(this.settings.extraSystemPromptPath)
+        .onChange(v => { this.settings.extraSystemPromptPath = v.trim(); }));
+
+    new Setting(contentEl)
       .setName("内联笔记上限（字符）")
       .setDesc("引用笔记时若超过该长度，只插入 @路径 让 pi 自己读")
       .addText(t => t
@@ -69,8 +91,8 @@ export class PiSettingsModal extends Modal {
         }));
 
     new Setting(contentEl)
-      .setName("工作目录")
-      .setDesc("pi 以 vault 根目录为 cwd，可读写全部笔记")
+      .setName("Vault 根目录（只读）")
+      .setDesc("pi 能读写的笔记根目录")
       .addText(t => { t.setValue(this.cwd || "(未知)"); t.setDisabled(true); });
 
     const row = contentEl.createDiv("pi-modal-actions");

@@ -92,6 +92,15 @@ class PiSettingTab extends PluginSettingTab {
     containerEl.empty();
     containerEl.createEl("h2", { text: "Pi Panel" });
 
+    const cwd = (() => {
+      try {
+        const adapter: any = this.app.vault.adapter;
+        return typeof adapter?.getBasePath === "function" ? String(adapter.getBasePath()) : "(未知)";
+      } catch {
+        return "(未知)";
+      }
+    })();
+
     new Setting(containerEl)
       .setName("pi 可执行文件")
       .setDesc("默认 pi。若 Obsidian 找不到命令（PATH 缺失），填绝对路径，如 %APPDATA%\\npm\\pi.cmd")
@@ -125,6 +134,30 @@ class PiSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
+      .setName("工作目录")
+      .setDesc(`pi 的 cwd。留空 = vault 根（${cwd}）。pi 只在 cwd 及其父目录找 AGENTS.md`)
+      .addText(t => t
+        .setPlaceholder(cwd)
+        .setValue(this.plugin.settings.cwd)
+        .onChange(async (v) => {
+          this.plugin.settings.cwd = v.trim();
+          await this.plugin.saveSettings();
+          this.bouncePanels();
+        }));
+
+    new Setting(containerEl)
+      .setName("附加系统提示文件")
+      .setDesc("传给 pi --append-system-prompt 的文件路径，如 E:\\piganet\\AGENTS.md（面板 cwd 在 vault，找不到项目规则时用这个）")
+      .addText(t => t
+        .setPlaceholder("E:\\piganet\\AGENTS.md")
+        .setValue(this.plugin.settings.extraSystemPromptPath)
+        .onChange(async (v) => {
+          this.plugin.settings.extraSystemPromptPath = v.trim();
+          await this.plugin.saveSettings();
+          this.bouncePanels();
+        }));
+
+    new Setting(containerEl)
       .setName("内联笔记上限（字符）")
       .setDesc("引用笔记超过该长度时，只插入 @路径，让 pi 自己用 read 工具读")
       .addText(t => t
@@ -137,18 +170,17 @@ class PiSettingTab extends PluginSettingTab {
           }
         }));
 
-    const cwd = (() => {
-      try {
-        const adapter: any = this.app.vault.adapter;
-        return typeof adapter?.getBasePath === "function" ? String(adapter.getBasePath()) : "(未知)";
-      } catch {
-        return "(未知)";
-      }
-    })();
-
     new Setting(containerEl)
-      .setName("工作目录")
-      .setDesc("pi 以 vault 根目录为 cwd")
+      .setName("Vault 根目录（只读）")
+      .setDesc("pi 的笔记根目录")
       .addText(t => { t.setValue(cwd); t.setDisabled(true); });
+  }
+
+  /** 设置变更后重启所有已打开面板里的 pi 进程 */
+  private bouncePanels() {
+    this.app.workspace.getLeavesOfType(VIEW_TYPE_PI_PANEL).forEach(leaf => {
+      const view: any = leaf.view;
+      if (typeof view?.resetPiProcess === "function") view.resetPiProcess();
+    });
   }
 }

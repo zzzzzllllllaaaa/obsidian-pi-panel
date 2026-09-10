@@ -172,10 +172,19 @@ export class PiPanelView extends ItemView {
 
   private openSettings() {
     new PiSettingsModal(this.app, this.settings, this.workingDir(), async (s) => {
-      this.settings = s;
+      Object.assign(this.settings, s);
       await this.saveSettings();
-      new Notice("Pi Panel 设置已保存（重启面板生效）");
+      this.resetPiProcess();
+      new Notice("Pi Panel 设置已保存，pi 进程已重置（下条消息生效）");
     }).open();
+  }
+
+  /** 设置变更后重启 pi 进程，让新参数（cwd / 工具白名单 / 附加系统提示）生效 */
+  resetPiProcess() {
+    this.rpc?.stop();
+    this.rpc = null;
+    this.hideTyping();
+    this.setStatus("idle", "设置已变更");
   }
 
   private workingDir(): string {
@@ -226,8 +235,10 @@ export class PiPanelView extends ItemView {
     if (!this.settings.persistSession) args.push("--no-session");
     const tools = String(this.settings.piAllowedTools || "").trim();
     if (tools) args.push("--tools", tools);
+    const extra = String(this.settings.extraSystemPromptPath || "").trim();
+    if (extra) args.push("--append-system-prompt", extra);
 
-    const cwd = this.workingDir();
+    const cwd = String(this.settings.cwd || "").trim() || this.workingDir();
     this.rpc = new PiRpcClient({
       exe: this.settings.piExecutable || "pi",
       args,

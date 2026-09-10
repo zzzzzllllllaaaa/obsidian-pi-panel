@@ -49,3 +49,17 @@ cp main.js manifest.json styles.css "<vault>/.obsidian/plugins/pi-panel/"
 | 允许的工具 | `--tools` 白名单，默认 `read,edit,write`；留空 = 全部工具（含 bash） |
 | 保留会话 | 开启后不加 `--no-session` |
 | 内联笔记上限 | 超过则只给 `@路径`，默认 20000 字符 |
+| 工作目录 | pi 的 cwd，留空 = vault 根。pi 只在 cwd 及父目录找 `AGENTS.md` |
+| 附加系统提示文件 | 传给 `--append-system-prompt` 的文件，如 `E:\piganet\AGENTS.md` |
+
+## 上下文 / 规则为什么"不生效"
+
+pi 启动时按 `~/.pi/agent/AGENTS.md` → 从 cwd 向上逐级父目录 → cwd 的顺序找 `AGENTS.md` / `CLAUDE.md`。
+面板默认 cwd 是 vault 根（`F:\obsidianwenjian`），所以 **`E:\piganet\AGENTS.md` 那套规则不会被读到**，"加载规则"之类的触发词自然不认。
+
+两种修法：
+1. 设置 → 附加系统提示文件 → `E:\piganet\AGENTS.md`（推荐，笔记路径不受影响）
+2. 设置 → 工作目录 → `E:\piganet`（cwd 变了，pi 的相对路径与 `@` 搜索也跟着变）
+
+改完设置会自动重启面板里的 pi 进程，下一条消息生效。
+> 用 `--tools read,edit,write` 时 pi 没有 `bash`，规则里 `python tools/workspace.py init` 这类步骤跑不了；要跑就把它加进白名单。
