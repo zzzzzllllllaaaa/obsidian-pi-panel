@@ -57,6 +57,26 @@ function readHead(file: string, fs: any, maxBytes = 16384): string {
   }
 }
 
+/**
+ * 读文件尾部。会话名(session_info)是 append 到文件末尾的，
+ * 长会话会超出 readHead 的 16KB 窗口 → 必须单独扫尾部。
+ */
+function readTail(file: string, fs: any, maxBytes = 262144): string {
+  try {
+    const size = fs.statSync(file).size || 0;
+    const start = Math.max(0, size - maxBytes);
+    const len = size - start;
+    if (len <= 0) return "";
+    const fd = fs.openSync(file, "r");
+    const buf = Buffer.alloc(len);
+    const read = fs.readSync(fd, buf, 0, len, start);
+    fs.closeSync(fd);
+    return buf.slice(0, read).toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
 function parseSession(file: string, fs: any, fallbackCwd: string): PiSessionInfo | null {
   let stat: any;
   try {
@@ -98,6 +118,24 @@ function parseSession(file: string, fs: any, fallbackCwd: string): PiSessionInfo
     } else if (evt.type === "session_info" && typeof evt.name === "string") {
       name = evt.name.trim(); // 最新的 session_info 生效（pi 也是反向找最新一条）
     }
+  }
+
+  // 名字单独从尾部扫：session_info 是 append 的，长会话不在 head 窗口里
+  const tail = readTail(file, fs);
+  if (tail) {
+    let tailName = "";
+    for (const raw of tail.split("\n")) {
+      const line = raw.trim();
+      if (!line) continue;
+      let evt: any;
+      try {
+        evt = JSON.parse(line);
+      } catch {
+        continue; // 尾部窗口从行中间截断
+      }
+      if (evt.type === "session_info" && typeof evt.name === "string") tailName = evt.name.trim();
+    }
+    name = tailName || name; // 尾部没有就保留 head 扫到的（极端长文件）
   }
 
   if (!id) id = String(file).split("_").pop()?.replace(/\.jsonl$/, "") || "";
