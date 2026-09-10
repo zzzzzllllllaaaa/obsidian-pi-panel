@@ -8,11 +8,7 @@ export default class PiPanelPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
 
-    this.registerView(VIEW_TYPE_PI_PANEL, (leaf) => new PiPanelView(
-      leaf,
-      this.settings,
-      async () => { await this.saveSettings(); },
-    ));
+    this.registerViewType();
 
     this.addRibbonIcon("terminal", "打开 Pi 面板", () => { void this.activate(); });
 
@@ -36,6 +32,28 @@ export default class PiPanelPlugin extends Plugin {
 
   onunload() {
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_PI_PANEL);
+  }
+
+  /**
+   * 注册视图类型。
+   * 若上一次加载失败（Obsidian 认为插件未成功装载，不会走 onunload 清理），
+   * 再次加载会撞上 "Attempting to register an existing view type" ——
+   * 这里先尝试注销旧注册，再注册，并兜住异常。
+   */
+  private registerViewType() {
+    const registry: any = (this.app as any)?.viewRegistry;
+    try { registry?.unregisterView?.(VIEW_TYPE_PI_PANEL); } catch { /* noop */ }
+
+    try {
+      this.registerView(VIEW_TYPE_PI_PANEL, (leaf) => new PiPanelView(
+        leaf,
+        this.settings,
+        async () => { await this.saveSettings(); },
+      ));
+    } catch (e) {
+      console.warn("[Pi Panel] registerView failed", e);
+      // 同会话内类型已被占用，客户端界面仍可用，重启 Obsidian 后恢复正常
+    }
   }
 
   async activate() {
