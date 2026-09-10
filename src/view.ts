@@ -135,6 +135,7 @@ export class PiPanelView extends ItemView {
 
   // DOM
   private statusPill!: HTMLElement;
+  private extStatusEl!: HTMLElement;
   private modelChip!: HTMLElement;
   private chatEl!: HTMLElement;
   private chipsEl!: HTMLElement;
@@ -173,6 +174,8 @@ export class PiPanelView extends ItemView {
     this.rememberMarkdownView();
 
     this.buildHeader(root);
+    this.extStatusEl = root.createDiv("pi-ext-status");
+    this.extStatusEl.style.display = "none";
 
     if (!Platform.isDesktopApp) {
       const warn = root.createDiv("pi-banner");
@@ -237,12 +240,34 @@ export class PiPanelView extends ItemView {
     iconBtn("settings", "设置", () => this.openSettings());
   }
 
-  private setStatus(s: Status, detail = "") {
-    this.status = s;
+  /** pi 扩展上报的状态（Feishu / 定时任务等）——单独一行，不污染面板状态 */
+  private setExtStatus(text: string) {
+    if (!this.extStatusEl) return;
+    const t = String(text || "").trim();
+    if (!t) {
+      this.extStatusEl.setText("");
+      this.extStatusEl.style.display = "none";
+      return;
+    }
+    this.extStatusEl.setText(t);
+    this.extStatusEl.style.display = "";
+    debugLog.info(`扩展状态：${t}`);
+  }
+
+  /** 手动重启 pi 进程（调试弹窗里的按钮） */
+  restartPi() {
+    debugLog.info("手动重启 pi 进程");
+    this.rpc?.stop("手动重启");
+    this.rpc = null;
+    this.ensureRpc();
+    this.systemLine("已重启 pi 进程", "pi-sys");
+  }
+
+  private setStatus(s: Status, detail = "") {    this.status = s;
     this.statusDetail = detail;
     if (!this.statusPill) return;
     const label: Record<Status, string> = {
-      idle: "未启动",
+      idle: detail ? "待重启" : "未启动",
       starting: "启动中",
       ready: "就绪",
       streaming: "运行中",
@@ -274,15 +299,22 @@ export class PiPanelView extends ItemView {
   /** 设置变更后重启 pi 进程，让新参数（cwd / 工具白名单 / 附加系统提示）生效 */
   resetPiProcess() {
     debugLog.info(`重置 pi 进程（设置变更）: cwd=${this.effectiveCwd()} tools=${this.settings.piAllowedTools} model=${this.settings.defaultModel || "(默认)"}`);
-    this.rpc?.stop();
+    this.rpc?.stop("设置变更");
     this.rpc = null;
     this.hideTyping();
-    this.setStatus("idle", "设置已变更");
+    this.setStatus("idle", "设置已变更，下条消息重启");
   }
 
   /** 调试日志弹窗（环境信息 + 日志尾部） */
   openDebug() {
-    new DebugModal(this.app, () => this.debugInfo()).open();
+    new DebugModal(this.app, () => this.debugInfo(), () => this.restartPi()).open();
+  }
+
+  private obsidianVersion(): string {
+    const a: any = this.app as any;
+    const g: any = globalThis as any;
+    const v = a?.appVersion || a?.version || g?.app?.appVersion || g?.app?.version || a?.vault?.config?.appVersion;
+    return `${v || "?"} | platform ${String(g?.process?.platform || "?")} | node ${String(g?.process?.versions?.node || "?")}`;
   }
 
   private pluginVersion(): string {
@@ -298,7 +330,8 @@ export class PiPanelView extends ItemView {
     const lines = [
       `时间         ${new Date().toLocaleString()}`,
       `插件版本     ${this.pluginVersion()}`,
-      `Obsidian     ${String((this.app as any)?.appVersion || "?")} | platform ${String((globalThis as any)?.process?.platform || "?")} | node ${String((globalThis as any)?.process?.versions?.node || "?")}`,
+      `Obsidian     ${this.obsidianVersion()}`,
+      `扩展状态     ${this.extStatusEl?.getText?.() || "(无)"}`,
       `pi 可执行     ${this.settings.piExecutable}`,
       `工作目录     ${this.effectiveCwd() || "(未知)"}`,
       `vault 根     ${this.workingDir() || "(未知)"}`,
@@ -391,9 +424,19 @@ export class PiPanelView extends ItemView {
         debugLog.error(`pi 启动失败：${msg}`);
       },
       onExit: (code, signal) => {
-        this.setStatus("exited", `code=${code}${signal ? " " + signal : ""}`);
-        this.systemLine(`pi 进程退出（code=${code}${signal ? ", " + signal : ""}）——点头部 🐞 看日志`, "pi-err");
+        const client = this.rpc;
+        const expected = client?.wasExpectedStop?.() === true;
+        const why = client?.stopReasonText?.() || "";
         this.rpc = null;
+        if (expected) {
+          // 插件主动重启（改设置 / 切会话 / 换模型）：不是错误
+          debugLog.info(`pi 进程已停止（${why || "主动"}），下条消息自动拉起`);
+          this.setStatus("idle", why ? `${why}，下条消息重启` : "已停止，下条消息重启");
+          return;
+        }
+        this.setStatus("exited", `code=${code}${signal ? " " + signal : ""}`);
+        this.systemLine(`pi 进程意外退出（code=${code}${signal ? ", " + signal : ""}）——点头部 🐞 看日志`, "pi-err");
+        debugLog.error(`pi 进程意外退出 code=${code} signal=${signal}（若带 --model 启动失败，可在设置里清空默认模型重试）`);
       },
       onStderr: (text) => this.systemLine(text.slice(0, 1500), "pi-stderr"),
     });
@@ -808,7 +851,7 @@ export class PiPanelView extends ItemView {
       return;
     }
     if (method === "setStatus") {
-      if (evt.statusText) this.setStatus(this.status, String(evt.statusText).slice(0, 24));
+      this.setExtStatus(String(evt.statusText || ""));
       return;
     }
     if (method === "set_editor_text") {

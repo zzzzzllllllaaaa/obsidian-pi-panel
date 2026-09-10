@@ -635,3 +635,13 @@
   word-break: break-all;
   font-family: var(--font-monospace);
 }
+
+/* 扩展上报的状态（Feishu 等），独立一行，不污染面板状态 */
+.pi-ext-status {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  padding: 0 12px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

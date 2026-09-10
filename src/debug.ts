@@ -7,13 +7,15 @@ import { debugLog } from "./log";
 
 export class DebugModal extends Modal {
   private getInfo: () => string;
+  private onRestart?: () => void;
   private listEl!: HTMLElement;
   private follow = true;
   private unsubscribe: (() => void) | null = null;
 
-  constructor(app: App, getInfo: () => string) {
+  constructor(app: App, getInfo: () => string, onRestart?: () => void) {
     super(app);
     this.getInfo = getInfo;
+    this.onRestart = onRestart;
   }
 
   onOpen() {
@@ -47,6 +49,13 @@ export class DebugModal extends Modal {
       followBtn.setText(this.follow ? "自动滚动：开" : "自动滚动：关");
       if (this.follow) this.scrollToEnd();
     });
+    if (this.onRestart) {
+      mk("重启 pi 进程", () => {
+        this.onRestart?.();
+        new Notice("已重启 pi 进程");
+        setTimeout(() => this.render(), 300);
+      });
+    }
 
     contentEl.createDiv({ cls: "pi-debug-hint", text: `日志文件：${debugLog.getFile() || "(未启用)"}　·　内存中 ${debugLog.tail().length} 行` });
 

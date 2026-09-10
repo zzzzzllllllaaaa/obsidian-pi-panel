@@ -25,6 +25,8 @@ export class PiRpcClient {
   private opts: PiRpcOptions;
   private pending = new Map<string, Array<{ resolve: (v: any) => void; reject: (e: any) => void }>>();
   private seq = 0;
+  private expectedStop = false;
+  private stopReason = "";
 
   constructor(opts: PiRpcOptions) {
     this.opts = opts;
@@ -48,6 +50,8 @@ export class PiRpcClient {
       this.log("info", "start(): 进程已在运行，跳过");
       return true;
     }
+    this.expectedStop = false;
+    this.stopReason = "";
 
     let cp: any;
     try {
@@ -86,7 +90,7 @@ export class PiRpcClient {
     });
     this.child.on("exit", (code: number | null, signal: string | null) => {
       this.child = null;
-      this.log("info", `进程退出 code=${code} signal=${signal}`);
+      this.log("info", `进程退出 code=${code} signal=${signal}${this.expectedStop ? `（插件主动：${this.stopReason || "重启/关闭"}）` : ""}`);
       this.opts.onExit(code, signal);
     });
     this.child.stdout?.on("data", (chunk: any) => this.consume(chunk));
@@ -197,9 +201,12 @@ export class PiRpcClient {
   setModel(provider: string, modelId: string): Promise<any> { return this.request("set_model", { provider, modelId }); }
   switchSession(sessionPath: string): Promise<any> { return this.request("switch_session", { sessionPath }); }
 
-  stop() {
+  /** 标记为“主动停止”（设置变更/切会话等），退出时不当作出错 */
+  stop(reason = ""): void {
     if (!this.child) return;
-    this.log("info", "stop(): 结束 pi 进程");
+    this.expectedStop = true;
+    this.stopReason = reason;
+    this.log("info", `stop(): 结束 pi 进程${reason ? `（${reason}）` : ""}`);
     for (const waiters of this.pending.values()) {
       for (const w of waiters) w.reject(new Error("pi 进程已退出"));
     }
@@ -207,6 +214,15 @@ export class PiRpcClient {
     try { this.child.stdin?.end(); } catch { /* noop */ }
     try { this.child.kill(); } catch { /* noop */ }
     this.child = null;
+  }
+
+  /** 是否属于插件主动停止（用于区分意外崩溃与正常重启） */
+  wasExpectedStop(): boolean {
+    return this.expectedStop;
+  }
+
+  stopReasonText(): string {
+    return this.stopReason;
   }
 }
 
