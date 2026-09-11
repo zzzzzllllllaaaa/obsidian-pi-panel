@@ -140,3 +140,46 @@ pi 内置工具：`read` `bash` `edit` `write` `grep` `find` `ls`。
 - 直接往 JSONL 追加一条 `session_info` entry（格式与 pi `/name` 命令完全一致）
 - 若该会话正在运行，顺带 RPC `set_session_name` 即时生效
 - 留空 = 清除名字，下次显示回到首条消息摘要
+
+## 远程模式（手机 / 多设备连电脑上的 pi）
+
+手机无法在本机跑 pi（没有 node/二进制），所以走「电脑上的桥」：
+
+```
+手机 Obsidian ──ws──> 电脑 pi_rpc_bridge.py ──spawn──> pi --mode rpc
+```
+
+### 1. 电脑上启动桥
+```
+python tools/pi_rpc_bridge.py --port 8770 --token <随机串> --cwd E:\piganet     --tools read,write,edit,grep,find,ls,bash --model 自由/zhwly
+```
+或双击 `E:\piganet\启动pi桥.bat`（自动生成/复用 token）。
+
+防火墙需放行（只局域网即可）：
+```
+netsh advfirewall firewall add rule name="Pi RPC Bridge 8770 (LAN only)" dir=in action=allow protocol=TCP localport=8770 remoteip=LocalSubnet profile=any
+```
+
+### 2. 手机上设置
+设置 → Pi Panel：
+- 连接模式 = 远程
+- 桥地址 = `ws://192.168.1.2:8770`（电脑局域网 IP）
+- 桥 token = 与 `--token` 一致
+
+### 3. 出门用（不在同一 wifi）
+电脑与手机各装 Tailscale 登同一账号，桥地址改成 `ws://100.x.x.x:8770`，
+防火墙再加一条 `remoteip=100.64.0.0/10` 的规则。
+
+### 桥提供了什么
+| 端点 | 用途 |
+|---|---|
+| `WS /rpc` | pi --mode rpc 的双向透传（协议与本地完全一致） |
+| `GET /sessions?cwd=` | 历史会话列表（含 session_info 名字） |
+| `POST /sessions/rename` | 重命名会话（追加 session_info） |
+| `GET/PUT /models` | 读写电脑的 models.json（校验+备份） |
+| `GET /health` | 桥与 pi 配置概览 |
+
+### 限制
+- 远程模式下 `models.json` 管理器不可用（文件在电脑上，请在电脑上改）
+- 手机端建议工具白名单 `read,grep,find,ls`（要改笔记加 `write,edit`）；`bash` = 手机能操作你整台电脑
+- 桥必须带 token，不要暴露公网端口

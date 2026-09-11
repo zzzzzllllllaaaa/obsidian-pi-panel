@@ -34,7 +34,7 @@ import { PiPanelSettings, PiSettingsModal } from "./settings";
 
 
 
-import { listSessions, PiSessionInfo, renameSession } from "./sessions";
+import { listSessions, listSessionsRemote, PiSessionInfo, renameSession, renameSessionRemote } from "./sessions";
 
 
 
@@ -934,7 +934,7 @@ export class PiPanelView extends ItemView {
 
 
 
-    if (!Platform.isDesktopApp) {
+    if (!Platform.isDesktopApp && !this.isRemote()) {
 
 
 
@@ -942,7 +942,9 @@ export class PiPanelView extends ItemView {
 
 
 
-      warn.setText("Pi Panel 仅支持桌面端（需要在本机调用 pi CLI）。");
+      warn.setText(
+        "手机/平板无法在本机运行 pi。请到「设置 → Pi Panel → 连接模式」改成「远程」，填入电脑上的桥地址（如 ws://192.168.1.2:8770）与 token。",
+      );
 
 
 
@@ -1570,6 +1572,8 @@ export class PiPanelView extends ItemView {
 
 
 
+      `连接模式     ${this.isRemote() ? `远程 ${this.settings.bridgeUrl}` : "本地（spawn pi）"}` +
+      `\n` +
       `会话模式     ${this.settings.sessionMode}${this.selectedSession ? ` / 指定会话 ${this.selectedSession}` : ""}`,
 
 
@@ -1774,7 +1778,23 @@ export class PiPanelView extends ItemView {
 
 
 
+  /** 远程模式：连电脑上的桥（手机用），不 spawn 本地 pi */
+
+  private isRemote(): boolean {
+
+    return this.settings.connectionMode === "remote" && !!String(this.settings.bridgeUrl || "").trim();
+
+  }
+
   private ensureRpc(): boolean {
+
+    if (!Platform.isDesktopApp && !this.isRemote()) {
+      this.setStatus("error", "手机需远程模式");
+      new Notice("这台设备跑不了 pi 本机进程。请到 设置 → Pi Panel → 连接模式 改成「远程」，填电脑桥地址与 token", 12000);
+      debugLog.error("移动端本地模式不可用：请在设置里切换到远程模式");
+      return false;
+    }
+
 
 
 
@@ -1906,6 +1926,13 @@ export class PiPanelView extends ItemView {
 
 
 
+    const remote = this.isRemote()
+      ? { url: String(this.settings.bridgeUrl || "").trim(), token: String(this.settings.bridgeToken || "").trim() }
+      : undefined;
+    if (remote) {
+      debugLog.info(`远程模式：桥 ${remote.url}（cwd=${cwd}）`);
+      this.systemLine(`连接电脑桥：${remote.url}`, "pi-sys");
+    }
     client = new PiRpcClient({
 
 
@@ -1919,6 +1946,8 @@ export class PiPanelView extends ItemView {
 
 
       cwd,
+
+      remote,
 
 
 
@@ -3201,6 +3230,12 @@ export class PiPanelView extends ItemView {
   }
 
   private systemLine(text: string, cls: string) {
+
+    if (!this.chatEl) {
+      debugLog.line("info", `[无界面] ${text}`);
+      return;
+    }
+
 
 
 
@@ -5458,6 +5493,16 @@ export class PiPanelView extends ItemView {
 
   private openModelManager() {
 
+    if (this.isRemote()) {
+
+      new Notice("远程模式下 models.json 在电脑上，请在电脑上管理（或直接编辑 ~/.pi/agent/models.json）", 8000);
+
+      return;
+
+    }
+
+
+
 
 
     new ModelManagerModal(this.app, () => {
@@ -5488,120 +5533,89 @@ export class PiPanelView extends ItemView {
 
 
 
-  private openSessionPicker() {
-
-
+  private async openSessionPicker() {
 
     const cwd = this.effectiveCwd();
 
-
+    const remote = this.isRemote();
 
     let items: PiSessionInfo[] = [];
 
-
-
     try {
-
-      items = listSessions(cwd, 60);
-
+      if (remote) {
+        this.systemLine(`正在从桥读取会话列表…`, "pi-sys");
+        items = await listSessionsRemote(
+          String(this.settings.bridgeUrl || ""),
+          String(this.settings.bridgeToken || ""),
+          cwd,
+          60,
+        );
+      } else {
+        items = listSessions(cwd, 60);
+      }
     } catch (e: any) {
-
-      new Notice(`读取会话列表失败：${String(e?.message || e)}`);
-
+      new Notice(`读取会话列表失败：${String(e?.message || e)}`, 6000);
       return;
-
     }
 
-
-
-    const open = () => this.openSessionPicker();
-
-
+    const open = () => void this.openSessionPicker();
 
     new PiSessionPickerModal(this.app, cwd, items, {
-
       onPick: (info: PiSessionInfo) => {
-
         this.selectedSession = info.file;
-
         this.resetPiProcess();
-
         this.clearChat();
-
         this.systemLine(`已切换会话：${info.name || info.preview || info.id.slice(0, 8)}`, "pi-sys");
-
         this.ensureRpc();
-
       },
-
       onNew: () => {
-
         this.selectedSession = null;
-
         this.resetPiProcess();
-
         this.clearChat();
-
         this.systemLine("已开始新会话", "pi-sys");
-
       },
-
       onResumeLast: () => {
-
         this.selectedSession = null;
-
         this.settings.sessionMode = "resume";
-
         void this.saveSettings();
-
         this.resetPiProcess();
-
         this.clearChat();
-
         this.systemLine("已切回「继续上次」模式", "pi-sys");
-
       },
-
       onRename: (info: PiSessionInfo) => {
-
         new PiRenameModal(this.app, info, (name: string | null) => {
-
           if (name === null) return;
-
           const trimmed = String(name || "").trim();
-
-          try {
-
-            const r = renameSession(info.file, trimmed);
-
-            if (r.ok) new Notice(trimmed ? `已重命名：${trimmed}` : "已清除名字");
-
-            else { new Notice(`重命名失败：${r.reason}`, 6000); return; }
-
-          } catch (e: any) {
-
-            new Notice(`重命名失败：${String(e?.message || e)}`, 6000);
-
-            return;
-
+          const done = (r: { ok: boolean; reason?: string }) => {
+            if (!r.ok) { new Notice(`重命名失败：${r.reason}`, 6000); return; }
+            new Notice(trimmed ? `已重命名：${trimmed}` : "已清除名字");
+            // 仅当改的正是「当前指定会话」时才顺带 RPC 改名（否则会误改当前会话）
+            if (!remote && this.selectedSession === info.file && this.rpc?.running) {
+              void this.rpc.setSessionName(trimmed).catch(() => {});
+            }
+            open();
+          };
+          if (remote) {
+            void renameSessionRemote(
+              String(this.settings.bridgeUrl || ""),
+              String(this.settings.bridgeToken || ""),
+              info.file,
+              trimmed,
+            )
+              .then(done)
+              .catch((e: any) => new Notice(`重命名失败：${String(e?.message || e)}`, 6000));
+          } else {
+            try {
+              done(renameSession(info.file, trimmed));
+            } catch (e: any) {
+              new Notice(`重命名失败：${String(e?.message || e)}`, 6000);
+            }
           }
-
-          if (this.rpc?.running) {
-
-            void this.rpc.setSessionName(trimmed).catch(() => {});
-
-          }
-
-          open();
-
         }).open();
-
       },
-
     }).open();
 
   }
-
 
 
 }

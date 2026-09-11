@@ -1,7 +1,65 @@
 /**
  * 读取 pi 的会话文件列表（~/.pi/agent/sessions/<cwd slug>/<timestamp>_<uuid>.jsonl）
  * 仅桌面端可用：node 内置模块全部惰性 require。
+ *
+ * 远程模式（手机连电脑上的桥）走 HTTP：listSessionsRemote / renameSessionRemote。
  */
+
+import { requestUrl } from "obsidian";
+
+/** ws://host:port → http://host:port（桥同时提供 HTTP 端点） */
+export function httpBaseFromWs(wsUrl: string): string {
+  let u = String(wsUrl || "").trim();
+  if (!u) return "";
+  u = u.replace(/^wss:\/\//i, "https://").replace(/^ws:\/\//i, "http://");
+  u = u.replace(/\/+$/, "");
+  u = u.replace(/\/rpc$/i, ""); // 允许用户填完整端点 ws://host:port/rpc
+  return u;
+}
+
+function withToken(url: string, token: string): string {
+  if (!token) return url;
+  return url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token);
+}
+
+/** 远程列出会话（桥在电脑侧读文件，手机不用碰 fs） */
+export async function listSessionsRemote(
+  wsUrl: string,
+  token: string,
+  cwd: string,
+  limit = 60,
+): Promise<PiSessionInfo[]> {
+  const base = httpBaseFromWs(wsUrl);
+  if (!base) throw new Error("未配置桥地址");
+  const url = withToken(
+    `${base}/sessions?cwd=${encodeURIComponent(cwd || "")}&limit=${limit}`,
+    token,
+  );
+  const res = await requestUrl({ url, method: "GET" });
+  if (res.status >= 400) throw new Error(`桥返回 ${res.status}`);
+  const j: any = res.json;
+  return Array.isArray(j?.sessions) ? j.sessions : [];
+}
+
+/** 远程重命名会话（桥负责追加 session_info entry） */
+export async function renameSessionRemote(
+  wsUrl: string,
+  token: string,
+  file: string,
+  name: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const base = httpBaseFromWs(wsUrl);
+  if (!base) return { ok: false, reason: "未配置桥地址" };
+  const res = await requestUrl({
+    url: withToken(`${base}/sessions/rename`, token),
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ file, name }),
+  });
+  if (res.status >= 400) return { ok: false, reason: `桥返回 ${res.status}` };
+  const j: any = res.json;
+  return j && typeof j.ok === "boolean" ? j : { ok: false, reason: "桥返回异常" };
+}
 
 export interface PiSessionInfo {
   /** 绝对路径 */

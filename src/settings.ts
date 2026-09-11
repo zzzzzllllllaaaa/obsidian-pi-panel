@@ -92,6 +92,12 @@ export interface PiPanelSettings {
   defaultModel: string;
   /** 常用模型（选择器置顶），格式 provider/id */
   favoriteModels: string[];
+  /** local = 本机 spawn pi（桌面）；remote = 连电脑上的桥（手机/多设备） */
+  connectionMode: "local" | "remote";
+  /** 桥地址，如 ws://192.168.1.2:8770 */
+  bridgeUrl: string;
+  /** 桥 token（与启动桥时 --token 一致） */
+  bridgeToken: string;
   /** 旧字段，仅用于配置迁移 */
   persistSession?: boolean;
 }
@@ -105,6 +111,9 @@ export const DEFAULT_SETTINGS: PiPanelSettings = {
   extraSystemPromptPath: "",
   defaultModel: "",
   favoriteModels: [],
+  connectionMode: "local",
+  bridgeUrl: "",
+  bridgeToken: "",
 };
 
 export class PiSettingsModal extends Modal {
@@ -133,8 +142,33 @@ export class PiSettingsModal extends Modal {
     contentEl.createEl("h3", { text: "Pi Panel 设置" });
 
     new Setting(contentEl)
+      .setName("连接模式")
+      .setDesc("本地 = 在这台设备上跑 pi（桌面）。远程 = 连电脑上的桥，手机用这个")
+      .addDropdown(d => d
+        .addOption("local", "本地（本机 pi）")
+        .addOption("remote", "远程（连电脑的桥）")
+        .setValue(this.settings.connectionMode)
+        .onChange(v => { this.settings.connectionMode = v as any; }));
+
+    new Setting(contentEl)
+      .setName("桥地址")
+      .setDesc("远程模式用。电脑上跑 python tools/pi_rpc_bridge.py --port 8770 --token xxx，这里填 ws://电脑IP:8770")
+      .addText(t => t
+        .setPlaceholder("ws://192.168.1.2:8770")
+        .setValue(this.settings.bridgeUrl)
+        .onChange(v => { this.settings.bridgeUrl = v.trim(); }));
+
+    new Setting(contentEl)
+      .setName("桥 token")
+      .setDesc("与启动桥时的 --token 一致；留空表示桥没设 token（不安全）")
+      .addText(t => t
+        .setPlaceholder("（与桥的 --token 相同）")
+        .setValue(this.settings.bridgeToken)
+        .onChange(v => { this.settings.bridgeToken = v.trim(); }));
+
+    new Setting(contentEl)
       .setName("pi 可执行文件")
-      .setDesc("默认 pi。若 Obsidian 找不到命令（PATH 缺失），填绝对路径，如 C:\\Users\\你\\AppData\\Roaming\\npm\\pi.cmd")
+      .setDesc("本地模式用。默认 pi。若 Obsidian 找不到命令（PATH 缺失），填绝对路径，如 C:\\Users\\你\\AppData\\Roaming\\npm\\pi.cmd")
       .addText(t => t
         .setPlaceholder("pi")
         .setValue(this.settings.piExecutable)

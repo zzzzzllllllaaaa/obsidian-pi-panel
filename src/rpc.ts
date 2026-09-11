@@ -7,10 +7,19 @@
  * - child_process 惰性 require（移动端没有该模块，顶层 import 会让插件加载即崩）
  */
 
+export interface PiRpcRemote {
+  /** 桥地址，如 ws://192.168.1.2:8770 */
+  url: string;
+  /** 桥的 token（可空） */
+  token?: string;
+}
+
 export interface PiRpcOptions {
   exe: string;
   args: string[];
   cwd?: string;
+  /** 给了就用远程传输（WebSocket → 电脑上的桥 → pi），否则本地 spawn */
+  remote?: PiRpcRemote;
   onEvent: (evt: any) => void;
   onError: (message: string) => void;
   onExit: (code: number | null, signal: string | null) => void;
@@ -21,6 +30,7 @@ export interface PiRpcOptions {
 
 export class PiRpcClient {
   private child: any = null;
+  private ws: any = null;
   private buffer = "";
   private opts: PiRpcOptions;
   private pending = new Map<string, Array<{ resolve: (v: any) => void; reject: (e: any) => void }>>();
@@ -33,7 +43,13 @@ export class PiRpcClient {
   }
 
   get running(): boolean {
+    if (this.opts.remote) return !!this.ws && this.ws.readyState === 1;
     return !!this.child;
+  }
+
+  /** 当前是否远程（桥）模式 */
+  get isRemote(): boolean {
+    return !!this.opts.remote;
   }
 
   private lastCmd = "";
@@ -46,6 +62,7 @@ export class PiRpcClient {
   }
 
   start(): boolean {
+    if (this.opts.remote) return this.startRemote();
     if (this.child) {
       this.log("info", "start(): 进程已在运行，跳过");
       return true;
@@ -120,6 +137,90 @@ export class PiRpcClient {
     return true;
   }
 
+  /**
+   * 远程模式：连桥的 WebSocket，JSONL 原样透传（协议与本地完全相同）。
+   * 不用 child_process，因此手机上也能跑。
+   */
+  private startRemote(): boolean {
+    const W: any = (globalThis as any)?.WebSocket;
+    if (!W) {
+      const msg = "当前环境不支持 WebSocket，无法连接桥";
+      this.log("error", msg);
+      this.opts.onError(msg);
+      return false;
+    }
+    const cfg = this.opts.remote!;
+    const base = String(cfg.url || "").trim();
+    if (!base) {
+      const msg = "未配置桥地址（设置 → Pi Panel → 连接模式=远程）";
+      this.log("error", msg);
+      this.opts.onError(msg);
+      return false;
+    }
+    this.expectedStop = false;
+    this.stopReason = "";
+    // 允许填基础地址（ws://host:port）或完整端点（.../rpc），统一补成 /rpc
+    const noSlash = base.replace(/\/+$/, "");
+    const endpoint = /\/rpc(\?|$)/i.test(noSlash) ? noSlash : `${noSlash}/rpc`;
+    const sep = endpoint.includes("?") ? "&" : "?";
+    const full = cfg.token ? `${endpoint}${sep}token=${encodeURIComponent(cfg.token)}` : endpoint;
+    this.lastCmd = `ws → ${endpoint}`;
+    this.log("info", `连接桥：${base}${cfg.token ? " (token 已带)" : " (无 token)"}`);
+    this.log("info", `桥侧启动参数（hello.args）：${this.opts.args.map(quoteArg).join(" ")}`);
+
+    let sock: any;
+    try {
+      sock = new W(full);
+    } catch (e: any) {
+      this.log("error", `WebSocket 构造失败：${String(e?.message || e)}`);
+      this.opts.onError(`连接桥失败：${String(e?.message || e)}`);
+      return false;
+    }
+    this.ws = sock;
+
+    const stale = () => this.ws !== null && this.ws !== sock;
+
+    sock.onopen = () => {
+      if (stale()) return;
+      this.log("info", "桥已连接，发送 bridge_hello");
+      this.send({ type: "bridge_hello", args: this.opts.args, cwd: this.opts.cwd || "" });
+    };
+    sock.onmessage = (e: any) => {
+      if (stale()) return;
+      const data = typeof e?.data === "string" ? e.data : String(e?.data ?? "");
+      if (!data) return;
+      if (data.charCodeAt(0) === 123) {
+        try {
+          const o = JSON.parse(data);
+          if (o && o.type === "bridge_error") {
+            this.log("error", `桥错误：${o.message}`);
+            this.opts.onError(`桥错误：${o.message}`);
+            return;
+          }
+        } catch {
+          // 不是完整 JSON 就交给 consume 按行处理
+        }
+      }
+      this.consume(data + "\n");
+    };
+    sock.onerror = () => {
+      if (stale()) return;
+      this.log("error", "桥连接出错（地址/端口/token/防火墙？）");
+      this.opts.onError("桥连接出错：检查地址、端口、token 与电脑防火墙");
+    };
+    sock.onclose = (e: any) => {
+      if (stale()) {
+        this.log("info", "忽略旧桥连接的关闭事件");
+        return;
+      }
+      this.ws = null;
+      const code = Number(e?.code ?? 0);
+      this.log("info", `桥连接关闭 code=${code}${this.expectedStop ? `（插件主动：${this.stopReason || "重启/关闭"}）` : ""}`);
+      this.opts.onExit(null, null);
+    };
+    return true;
+  }
+
   private consume(chunk: any) {
     this.buffer += String(chunk?.toString?.() || chunk || "");
     while (true) {
@@ -157,6 +258,21 @@ export class PiRpcClient {
   }
 
   send(obj: any): boolean {
+    if (this.opts.remote) {
+      if (!this.ws || this.ws.readyState !== 1) {
+        this.log("error", `桥未连接，丢弃：${summarize(obj)}`);
+        return false;
+      }
+      const text = JSON.stringify(obj);
+      try {
+        this.ws.send(text);
+      } catch (e: any) {
+        this.log("error", `桥发送失败：${String(e?.message || e)}`);
+        return false;
+      }
+      if (!isNoisy(obj)) this.log("rpc-send", summarize(obj));
+      return true;
+    }
     if (!this.child?.stdin?.writable) {
       this.log("error", `stdin 不可写，丢弃：${summarize(obj)}`);
       return false;
@@ -215,6 +331,19 @@ export class PiRpcClient {
 
   /** 标记为“主动停止”（设置变更/切会话等），退出时不当作出错 */
   stop(reason = ""): void {
+    if (this.opts.remote) {
+      this.expectedStop = true;
+      this.stopReason = reason;
+      this.log("info", `stop(): 断开桥连接${reason ? `（${reason}）` : ""}`);
+      for (const waiters of this.pending.values()) {
+        for (const w of waiters) w.reject(new Error("桥连接已断开"));
+      }
+      this.pending.clear();
+      const sock = this.ws;
+      this.ws = null;
+      try { sock?.close(); } catch { /* noop */ }
+      return;
+    }
     if (!this.child) return;
     this.expectedStop = true;
     this.stopReason = reason;

@@ -1,4 +1,4 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, Platform, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { PiPanelView, setPluginVersion, VIEW_TYPE_PI_PANEL } from "./src/view";
 import { DEFAULT_SETTINGS, PiPanelSettings, renderToolsPicker } from "./src/settings";
 import { loadModelsFile, ModelInfo, ModelManagerModal, ModelPickerModal, validateModelsFile } from "./src/models";
@@ -70,6 +70,7 @@ export default class PiPanelPlugin extends Plugin {
 
   /** 日志落盘到插件目录（桌面端）；失败不影响使用 */
   private setupLogFile() {
+    if (!Platform.isDesktopApp) return; // 手机没有 fs/真实路径，只用内存日志
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const path = require("path");
@@ -204,8 +205,42 @@ class PiSettingTab extends PluginSettingTab {
     })();
 
     new Setting(containerEl)
+      .setName("连接模式")
+      .setDesc("本地 = 在这台设备上跑 pi（桌面）。远程 = 连电脑上的桥（手机装同一个插件用这个）")
+      .addDropdown(d => d
+        .addOption("local", "本地（本机 pi）")
+        .addOption("remote", "远程（连电脑的桥）")
+        .setValue(this.plugin.settings.connectionMode || "local")
+        .onChange(async (v) => {
+          this.plugin.settings.connectionMode = v as any;
+          await this.plugin.saveSettings();
+          this.plugin.bouncePanels();
+        }));
+    new Setting(containerEl)
+      .setName("桥地址")
+      .setDesc("远程模式用。电脑上运行：python tools/pi_rpc_bridge.py --port 8770 --token <随机串>；这里填 ws://电脑IP:8770")
+      .addText(t => t
+        .setPlaceholder("ws://192.168.1.2:8770")
+        .setValue(this.plugin.settings.bridgeUrl || "")
+        .onChange(async (v) => {
+          this.plugin.settings.bridgeUrl = v.trim();
+          await this.plugin.saveSettings();
+          this.plugin.bouncePanels();
+        }));
+    new Setting(containerEl)
+      .setName("桥 token")
+      .setDesc("与启动桥时的 --token 完全一致；留空表示桥没设 token")
+      .addText(t => t
+        .setPlaceholder("（与桥的 --token 相同）")
+        .setValue(this.plugin.settings.bridgeToken || "")
+        .onChange(async (v) => {
+          this.plugin.settings.bridgeToken = v.trim();
+          await this.plugin.saveSettings();
+          this.plugin.bouncePanels();
+        }));
+    new Setting(containerEl)
       .setName("pi 可执行文件")
-      .setDesc("默认 pi。若 Obsidian 找不到命令（PATH 缺失），填绝对路径，如 %APPDATA%\\npm\\pi.cmd")
+      .setDesc("本地模式用。默认 pi。若 Obsidian 找不到命令（PATH 缺失），填绝对路径，如 %APPDATA%\\npm\\pi.cmd")
       .addText(t => t
         .setPlaceholder("pi")
         .setValue(this.plugin.settings.piExecutable)
