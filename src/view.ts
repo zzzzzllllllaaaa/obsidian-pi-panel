@@ -1830,6 +1830,10 @@ export class PiPanelView extends ItemView {
 
 
 
+      this.systemLine("会话策略=继续上次：本次启动接上旧会话（想开新会话点输入框上方 ＋）", "pi-sys");
+
+
+
     }
 
 
@@ -4960,65 +4964,42 @@ export class PiPanelView extends ItemView {
 
 
   private newSession() {
+    const wasResume = this.settings.sessionMode === "resume";
+    const hadPinned = !!this.selectedSession;
+    const client = this.rpc;
 
+    // 关键：清掉两种"粘住旧会话"的状态 —— 指定会话(--session) 与 继续上次(--continue)
+    this.selectedSession = null;
+    if (wasResume) {
+      this.settings.sessionMode = "persist";
+      void this.saveSettings();
+    }
+    this.clearChat();
 
-
-    if (this.selectedSession) {
-
-
-
-      // 从历史会话切回“全新”：丢掉 --session 重启进程
-
-
-
-      this.selectedSession = null;
-
-
-
-      this.resetPiProcess();
-
-
-
-      this.clearChat();
-
-
-
-      this.systemLine("已开始新会话", "pi-sys");
-
-
-
+    if (!client || !client.running) {
+      this.systemLine(
+        wasResume
+          ? "已开始新会话（原为「继续上次」，已切回「新会话并存盘」；pi 未启动，下条消息开始新会话）"
+          : "已开始新会话（pi 未启动，下条消息开始新会话）",
+        "pi-sys",
+      );
       return;
-
-
-
     }
 
+    // 运行中：让 pi 自己开会话（不重启进程），按响应判断是否被扩展取消
+    void client
+      .request("new_session", {}, 15000)
+      .then((r: any) => {
+        const cancelled = !!(r && r.data && r.data.cancelled);
+        this.systemLine(
+          cancelled ? "新会话被扩展取消（session_before_switch）" : "已开始新会话",
+          cancelled ? "pi-err" : "pi-sys",
+        );
+      })
+      .catch((e: any) => this.systemLine(`新会话请求失败：${String(e?.message || e)}`, "pi-err"));
 
-
-    if (this.rpc?.running) {
-
-
-
-      this.rpc.newSession();
-
-
-
-      this.systemLine("已开始新会话", "pi-sys");
-
-
-
-      return;
-
-
-
-    }
-
-
-
-    new Notice("pi 未启动：发送第一条消息时会自动启动");
-
-
-
+    if (hadPinned) this.systemLine("已解除指定会话", "pi-sys");
+    if (wasResume) this.systemLine("已切回「新会话并存盘」（原为「继续上次」--continue）", "pi-sys");
   }
 
 
@@ -5569,10 +5550,7 @@ export class PiPanelView extends ItemView {
         this.ensureRpc();
       },
       onNew: () => {
-        this.selectedSession = null;
-        this.resetPiProcess();
-        this.clearChat();
-        this.systemLine("已开始新会话", "pi-sys");
+        this.newSession();
       },
       onResumeLast: () => {
         this.selectedSession = null;
