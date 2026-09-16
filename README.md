@@ -2,13 +2,15 @@
 
 在 Obsidian 侧边栏里跑 [pi coding agent](https://pi.dev)——边看笔记边提问，一键把当前笔记/选区/图片丢给 pi。
 
-> 作者 **3zh** ｜ 协议 **PolyForm Noncommercial 1.0.0（禁止商用）** ｜ 仓库 <https://github.com/zzzzzllllllaaaa/obsidian-pi-panel> ｜ 未上架官方市场，手动安装
+> 作者 **3zh** ｜ 协议 **MIT** ｜ 仓库 <https://github.com/zzzzzllllllaaaa/obsidian-pi-panel>
 
 ## 装法（不用编译）
 
 1. 到 [Releases](https://github.com/zzzzzllllllaaaa/obsidian-pi-panel/releases/latest) 下载 `main.js`、`manifest.json`、`styles.css`
 2. 放到 `<你的库>/.obsidian/plugins/pi-panel/`
 3. 重启 Obsidian → 设置 → 第三方插件 → 启用 **Pi Panel**
+
+（已提交上架 Obsidian 官方社区插件目录，审核中；通过后可直接在 Obsidian 内搜索安装。）
 
 源码装也行（见下面「开发」）。
 
@@ -197,8 +199,17 @@ netsh advfirewall firewall add rule name="Pi RPC Bridge 8770 (LAN only)" dir=in 
 ## 作者与授权
 
 - **作者**：3zh（<https://github.com/zzzzzllllllaaaa>）
-- **授权**：[PolyForm Noncommercial License 1.0.0](LICENSE) —— **不可商用**
-  - 可以用：个人使用、学习、研究、实验、改动、二次分发（分发须随附协议）
-  - 不可以：出售、付费分发、捆绑进商业产品、用于提供收费服务、公司内部生产用途
-  - 未经作者书面同意，禁止任何商业用途；商业授权请开 issue 联系
+- **授权**：[MIT](LICENSE) —— 随便用，商用也行
 - 意见与 bug 走 GitHub Issues；本插件为个人项目，不承诺维护节奏
+
+## 权限与数据说明（上架披露）
+
+- **无遥测、无埋点**：插件不收集也不上传任何数据。
+- **网络**：默认不联网。只有你主动开启「连接模式 = 远程」时，才用 WebSocket 连你自己指定的桥地址（局域网或 Tailscale），用于把 pi 跑在另一台电脑上。
+- **访问 vault 之外的文件（桌面端）**：运行本机 pi 时难免碰库外路径，具体是：
+  - `~/.pi/agent/` —— pi 自己的配置与会话记录（`models.json`、`sessions/*.jsonl`）；插件里的「历史会话」与「管理模型」直接读写这里
+  - 你设置的**工作目录**（设置项，可留空 = vault 根）—— 作为 pi 进程的 cwd，因为 pi 要从那里读 `AGENTS.md` / 项目文件
+  - 你设置的 **pi 可执行文件路径**（可能是 `%APPDATA%\npm\pi.cmd` 之类的库外路径）
+  - 开远程模式时还要读桥的 token（存在插件 `data.json` 里）
+- **子进程**：插件在本机 spawn `pi` 进程（`require("child_process")`，只在桌面端 + 惰性加载，移动端不会加载该模块）。关面板会杀掉这个进程。
+- **工具权限**：给 pi 的工具白名单由你在设置里决定（默认 `read,edit,write`）；给了 `bash` 就是给了命令执行权，请自行评估。

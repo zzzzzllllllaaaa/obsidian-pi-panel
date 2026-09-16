@@ -33,13 +33,13 @@ export default class PiPanelPlugin extends Plugin {
     this.addRibbonIcon("terminal", "打开 Pi 面板", () => { void this.activate(); });
 
     this.addCommand({
-      id: "open-pi-panel",
+      id: "open",
       name: "打开 Pi 面板",
       callback: () => { void this.activate(); },
     });
 
     this.addCommand({
-      id: "open-pi-panel-main",
+      id: "open-in-tab",
       name: "在新标签页打开 Pi 面板",
       callback: async () => {
         const leaf = this.app.workspace.getLeaf("tab");
@@ -48,13 +48,13 @@ export default class PiPanelPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "open-pi-panel-debug",
+      id: "view-debug-log",
       name: "查看调试日志",
       callback: () => this.openDebug(),
     });
 
     this.addCommand({
-      id: "open-pi-panel-models",
+      id: "manage-models",
       name: "管理模型（models.json）",
       callback: () => this.openModelManager(),
     });
@@ -65,7 +65,7 @@ export default class PiPanelPlugin extends Plugin {
 
   onunload() {
     debugLog.info("Pi Panel 卸载");
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_PI_PANEL);
+    // 不在这里 detachLeavesOfType：Obsidian 会自行按原位置重建 leaf（官方 guideline）
   }
 
   /** 日志落盘到插件目录（桌面端）；失败不影响使用 */
