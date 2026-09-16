@@ -414,7 +414,7 @@ export class PiRenameModal extends Modal {
 
 
 
-    setTimeout(() => input.focus(), 50);
+    window.setTimeout(() => input.focus(), 50);
 
 
 
@@ -926,7 +926,7 @@ export class PiPanelView extends ItemView {
 
 
 
-    this.extStatusEl.style.display = "none";
+    this.extStatusEl.setCssProps({ display: "none" });
 
 
 
@@ -1212,7 +1212,7 @@ export class PiPanelView extends ItemView {
 
 
 
-      this.extStatusEl.style.display = "none";
+      this.extStatusEl.setCssProps({ display: "none" });
 
 
 
@@ -1228,7 +1228,7 @@ export class PiPanelView extends ItemView {
 
 
 
-    this.extStatusEl.style.display = "";
+    this.extStatusEl.setCssProps({ display: "" });
 
 
 
@@ -1476,7 +1476,7 @@ export class PiPanelView extends ItemView {
 
 
 
-    const g: any = globalThis as any;
+    const g: any = window as any;
 
 
 
@@ -3153,7 +3153,7 @@ export class PiPanelView extends ItemView {
     // 直接 el.empty() + 等异步 render 会让内容瞬间塌陷到 0 高度，
     // 容器 scrollHeight < 视口时浏览器把 scrollTop 钳到 0 → 表现为「莫名跳回会话最前面」。
 
-    const tmp = document.createElement("div");
+    const tmp = createDiv();
 
     const swap = () => {
 
@@ -3495,7 +3495,7 @@ export class PiPanelView extends ItemView {
 
 
 
-    outWrap.style.display = "none";
+    outWrap.setCssProps({ display: "none" });
 
 
 
@@ -3663,7 +3663,7 @@ export class PiPanelView extends ItemView {
 
 
 
-    if (outWrap && (isError || text.length < 400)) outWrap.style.display = "block";
+    if (outWrap && (isError || text.length < 400)) outWrap.setCssProps({ display: "block" });
 
 
 
@@ -3971,7 +3971,7 @@ export class PiPanelView extends ItemView {
 
 
 
-    this.chipsEl.style.display = "none";
+    this.chipsEl.setCssProps({ display: "none" });
 
 
 
@@ -4167,7 +4167,7 @@ export class PiPanelView extends ItemView {
 
 
 
-    el.style.height = "auto";
+    el.setCssProps({ height: "auto" });
 
 
 

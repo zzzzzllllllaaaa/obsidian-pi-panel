@@ -80,11 +80,11 @@ export interface PiSessionInfo {
 
 function nodeMods(): { fs: any; path: any; os: any } | null {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
     const fs = require("fs");
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
     const path = require("path");
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
     const os = require("os");
     return { fs, path, os };
   } catch {

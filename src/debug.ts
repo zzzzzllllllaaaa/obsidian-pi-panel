@@ -53,7 +53,7 @@ export class DebugModal extends Modal {
       mk("重启 pi 进程", () => {
         this.onRestart?.();
         new Notice("已重启 pi 进程");
-        setTimeout(() => this.render(), 300);
+        window.setTimeout(() => this.render(), 300);
       });
     }
 

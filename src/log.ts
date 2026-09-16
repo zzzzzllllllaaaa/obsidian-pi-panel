@@ -89,9 +89,9 @@ export class DebugLog {
   private appendFile(line: string) {
     if (!this.file) return;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
       const fs = require("fs");
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
       const path = require("path");
       try {
         const st = fs.statSync(this.file);

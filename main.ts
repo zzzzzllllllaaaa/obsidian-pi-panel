@@ -11,7 +11,7 @@ export default class PiPanelPlugin extends Plugin {
   async onload() {
     setPluginVersion(this.manifest?.version || "?");
     this.setupLogFile();
-    debugLog.info(`Pi Panel 加载：v${this.manifest?.version || "?"} | Obsidian ${String((this.app as any)?.appVersion || "?")} | platform=${String((globalThis as any)?.process?.platform || "?")}`);
+    debugLog.info(`Pi Panel 加载：v${this.manifest?.version || "?"} | Obsidian ${String((this.app as any)?.appVersion || "?")} | platform=${Platform.isWin ? "win32" : Platform.isMacOS ? "darwin" : Platform.isLinux ? "linux" : "mobile"}`);
 
     window.addEventListener("unhandledrejection", (e: any) => {
       debugLog.error(`unhandledrejection: ${String(e?.reason?.stack || e?.reason || "")}`);
@@ -72,7 +72,7 @@ export default class PiPanelPlugin extends Plugin {
   private setupLogFile() {
     if (!Platform.isDesktopApp) return; // 手机没有 fs/真实路径，只用内存日志
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
       const path = require("path");
       const base = (this.manifest as any)?.dir;
       const vaultPath = (this.app.vault.adapter as any)?.getBasePath?.() || "";
@@ -193,7 +193,6 @@ class PiSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Pi Panel" });
 
     const cwd = (() => {
       try {

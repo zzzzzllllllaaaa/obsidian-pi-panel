@@ -72,7 +72,7 @@ export class PiRpcClient {
 
     let cp: any;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
       cp = require("child_process");
     } catch (e: any) {
       this.log("error", `无法加载 child_process：${String(e?.message || e)}`);
@@ -88,8 +88,8 @@ export class PiRpcClient {
     try {
       this.child = cp.spawn(this.opts.exe, this.opts.args, {
         cwd: this.opts.cwd || undefined,
-        env: (globalThis as any)?.process?.env || undefined,
-        shell: !!(globalThis as any)?.process?.platform?.startsWith?.("win"),
+        env: (window as any)?.process?.env || undefined,
+        shell: !!(window as any)?.process?.platform?.startsWith?.("win"),
       });
     } catch (e: any) {
       this.child = null;
@@ -142,7 +142,7 @@ export class PiRpcClient {
    * 不用 child_process，因此手机上也能跑。
    */
   private startRemote(): boolean {
-    const W: any = (globalThis as any)?.WebSocket;
+    const W: any = (window as any)?.WebSocket;
     if (!W) {
       const msg = "当前环境不支持 WebSocket，无法连接桥";
       this.log("error", msg);
@@ -314,7 +314,7 @@ export class PiRpcClient {
         reject(new Error("写入 pi 进程失败（进程可能已退出）"));
         return;
       }
-      setTimeout(() => {
+      window.setTimeout(() => {
         const cur = this.pending.get(command);
         if (!cur || !cur.includes(entry)) return;
         this.pending.set(command, cur.filter((x) => x !== entry));
