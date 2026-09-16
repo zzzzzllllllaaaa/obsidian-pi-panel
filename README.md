@@ -44,6 +44,18 @@ npm run verify                # tsc --noEmit
 npm run build                 # 产物 main.js
 ```
 
+## 发布（给 Obsidian 官方目录用）
+
+Obsidian 是**拿 release 的 tag 去和 `manifest.json` 的 `version` 精确对抳**的，所以：
+
+- tag **必须是 `0.5.4` 这种形式，不要 `v0.5.4`**（带 v 会报「没有任何发布能匹配你的清单版本」）
+- release 必须传 `main.js` + `manifest.json` + `styles.css`
+- 流程：改 `manifest.json` / `versions.json` 版本号 → `npm run build` → commit push → `gh release create <版本号> ...`
+
+```bash
+gh release create 0.5.5 --title "Pi Panel 0.5.5" --notes-file notes.md main.js manifest.json styles.css
+```
+
 安装到 vault：
 
 ```bash
