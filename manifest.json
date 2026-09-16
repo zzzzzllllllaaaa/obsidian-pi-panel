@@ -1,7 +1,7 @@
 {
   "id": "pi-panel",
   "name": "Pi Panel",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "minAppVersion": "1.7.2",
   "description": "Embed the pi coding agent in a sidebar: chat alongside your notes and reference the current note, selection, or pasted image.",
   "author": "3zh",
