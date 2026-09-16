@@ -2,6 +2,16 @@
 
 在 Obsidian 侧边栏里跑 [pi coding agent](https://pi.dev)——边看笔记边提问，一键把当前笔记/选区/图片丢给 pi。
 
+> 作者 **3zh** ｜ 协议 **PolyForm Noncommercial 1.0.0（禁止商用）** ｜ 仓库 <https://github.com/zzzzzllllllaaaa/obsidian-pi-panel> ｜ 未上架官方市场，手动安装
+
+## 装法（不用编译）
+
+1. 到 [Releases](https://github.com/zzzzzllllllaaaa/obsidian-pi-panel/releases/latest) 下载 `main.js`、`manifest.json`、`styles.css`
+2. 放到 `<你的库>/.obsidian/plugins/pi-panel/`
+3. 重启 Obsidian → 设置 → 第三方插件 → 启用 **Pi Panel**
+
+源码装也行（见下面「开发」）。
+
 ## 功能
 
 - 侧边栏 / 新标签页里的 pi 聊天面板（ribbon 终端图标，或命令面板「打开 Pi 面板」）
@@ -12,7 +22,7 @@
 
 ## 前置条件
 
-- 桌面端 Obsidian（`isDesktopOnly: true`）
+- 桌面端 Obsidian（本机跑 pi）；移动端需配「远程模式」连电脑上的桥（见下文）
 - 本机已安装 pi CLI（终端 `pi --help` 可用）
 - 若 Obsidian 找不到 `pi`（GUI 进程 PATH 缺失），在设置里填绝对路径，如 `%APPDATA%\npm\pi.cmd`
 
@@ -183,3 +193,12 @@ netsh advfirewall firewall add rule name="Pi RPC Bridge 8770 (LAN only)" dir=in 
 - 远程模式下 `models.json` 管理器不可用（文件在电脑上，请在电脑上改）
 - 手机端建议工具白名单 `read,grep,find,ls`（要改笔记加 `write,edit`）；`bash` = 手机能操作你整台电脑
 - 桥必须带 token，不要暴露公网端口
+
+## 作者与授权
+
+- **作者**：3zh（<https://github.com/zzzzzllllllaaaa>）
+- **授权**：[PolyForm Noncommercial License 1.0.0](LICENSE) —— **不可商用**
+  - 可以用：个人使用、学习、研究、实验、改动、二次分发（分发须随附协议）
+  - 不可以：出售、付费分发、捆绑进商业产品、用于提供收费服务、公司内部生产用途
+  - 未经作者书面同意，禁止任何商业用途；商业授权请开 issue 联系
+- 意见与 bug 走 GitHub Issues；本插件为个人项目，不承诺维护节奏
