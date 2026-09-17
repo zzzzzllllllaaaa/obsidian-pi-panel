@@ -72,7 +72,7 @@ export class PiRpcClient {
 
     let cp: any;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- child_process 仅桌面端可用，移动端没有 pi 子进程
       cp = require("child_process");
     } catch (e: any) {
       this.log("error", `无法加载 child_process：${String(e?.message || e)}`);

@@ -86,7 +86,7 @@ export class DebugModal extends Modal {
 
 function copyToClipboard(text: string) {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- electron 仅桌面端存在，取不到时回退 navigator.clipboard
     const electron = require("electron");
     if (electron?.clipboard?.writeText) { electron.clipboard.writeText(text); return; }
   } catch { /* 非 electron 环境，退回 navigator */ }
@@ -95,7 +95,7 @@ function copyToClipboard(text: string) {
 
 function openPath(file: string) {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- electron 仅桌面端存在，取不到时不提示
     const electron = require("electron");
     if (electron?.shell?.openPath) electron.shell.openPath(file);
   } catch (e: any) {

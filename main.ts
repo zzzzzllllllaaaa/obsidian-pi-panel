@@ -72,7 +72,7 @@ export default class PiPanelPlugin extends Plugin {
   private setupLogFile() {
     if (!Platform.isDesktopApp) return; // 手机没有 fs/真实路径，只用内存日志
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- path 仅桌面端可用，函数开头已有 if (!Platform.isDesktopApp) return 守卫
       const path = require("path");
       const base = (this.manifest as any)?.dir;
       const vaultPath = (this.app.vault.adapter as any)?.getBasePath?.() || "";
@@ -363,7 +363,7 @@ class PiSettingTab extends PluginSettingTab {
       .addButton(b => b.setButtonText("复制全部").onClick(() => {
         const text = debugLog.text();
         try {
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- electron 模块只在桌面端存在，取不到时静默失败
           require("electron")?.clipboard?.writeText(text);
           new Notice(`已复制 ${debugLog.tail().length} 行日志`);
         } catch { new Notice("复制失败，请手动打开日志文件"); }

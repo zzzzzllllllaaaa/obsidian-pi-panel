@@ -67,7 +67,7 @@ export interface ModelInfo {
 // ── 路径 / 读写 ──────────────────────────────────────────────────────────
 
 function nodeRequire(name: string): any {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- 模块名由调用方传入（fs/path/os），只在桌面端路径上被调用
   return require(name);
 }
 

@@ -89,9 +89,9 @@ export class DebugLog {
   private appendFile(line: string) {
     if (!this.file) return;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- fs 仅桌面端可用；日志文件只在桌面端被设定（见 setupLogFile 的 isDesktopApp 分支）
       const fs = require("fs");
-      // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- path 仅桌面端可用，同上
       const path = require("path");
       try {
         const st = fs.statSync(this.file);

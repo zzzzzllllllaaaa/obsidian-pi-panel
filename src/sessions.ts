@@ -80,11 +80,11 @@ export interface PiSessionInfo {
 
 function nodeMods(): { fs: any; path: any; os: any } | null {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- fs 仅桌面端可用，移动端走远程模式不读本地会话文件
     const fs = require("fs");
-    // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- path 仅桌面端可用，同上
     const path = require("path");
-    // eslint-disable-next-line @typescript-eslint/no-var-requires, obsidianmd/no-nodejs-modules
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- os 仅桌面端可用，同上
     const os = require("os");
     return { fs, path, os };
   } catch {
