@@ -839,3 +839,7 @@
 /* 历史会话搜索框 */
 .pi-session-search { padding-bottom: 8px; }
 .pi-session-search input { width: 100%; }
+
+/* 头部按钮区：窄侧栏时换行，别把用量 chip 挤没 */
+.pi-head-actions { flex-wrap: wrap; justify-content: flex-end; }
+.pi-usage { max-width: none; }

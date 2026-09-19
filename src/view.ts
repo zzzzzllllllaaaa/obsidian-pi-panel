@@ -1084,11 +1084,12 @@ export class PiPanelView extends ItemView {
 
 
     this.usageChip = actions.createSpan("pi-pill pi-usage");
-    this.usageChip.setCssProps({ display: "none" });
+    this.usageChip.setText("用量 …");
     this.usageChip.title = "本会话 token / 上下文用量（点击看明细）";
     this.usageChip.addEventListener("click", () => {
       this.rpc?.getSessionStats();
       if (this.usage) new Notice(this.usageText(this.usage, true), 8000);
+      else new Notice("正在向 pi 要用量…（拿到后这里会显示）", 4000);
     });
 
     this.statusPill = actions.createSpan("pi-pill");
@@ -2151,6 +2152,7 @@ export class PiPanelView extends ItemView {
           this.applyState(evt.data);
         } else if (evt.command === "get_session_stats" && evt.data) {
           this.usage = evt.data;
+          debugLog.info(`收到 get_session_stats：ctx ${evt.data?.contextUsage?.percent ?? "?"}% / tokens ${evt.data?.tokens?.total ?? "?"}`);
           this.renderUsage();
         } else if (evt.command === "get_messages" && evt.data) {
 
@@ -2459,6 +2461,7 @@ export class PiPanelView extends ItemView {
 
 
     else if (this.status !== "error") this.setStatus("ready");
+    this.rpc?.getSessionStats();
 
 
 
@@ -3109,7 +3112,7 @@ export class PiPanelView extends ItemView {
     const t = u?.tokens || {};
     const ctx = u?.contextUsage;
     const parts: string[] = [];
-    if (ctx && typeof ctx.percent === "number") parts.push(`ctx ${ctx.percent}%`);
+    if (ctx && typeof ctx.percent === "number") parts.push(`ctx ${Math.round(ctx.percent * 10) / 10}%`);
     if (ctx && typeof ctx.tokens === "number") parts.push(`${this.fmtNum(ctx.tokens)}/${this.fmtNum(ctx.contextWindow || 0)}`);
     if (typeof t.total === "number") parts.push(`${this.fmtNum(t.total)} tok`);
     if (typeof u?.cost === "number" && u.cost > 0) parts.push(`$${u.cost.toFixed(3)}`);
@@ -3123,10 +3126,11 @@ export class PiPanelView extends ItemView {
 
   private renderUsage() {
     if (!this.usageChip) return;
-    if (!this.usage) { this.usageChip.setCssProps({ display: "none" }); return; }
-    this.usageChip.setText(this.usageText(this.usage, false));
-    this.usageChip.setCssProps({ display: "" });
+    if (!this.usage) { this.usageChip.setText("用量 …"); return; }
+    const text = this.usageText(this.usage, false);
+    this.usageChip.setText(text);
     this.usageChip.title = this.usageText(this.usage, true);
+    debugLog.info(`用量 chip：${text}`);
   }
 
   // ── 操作记录抽屉 ─────────────────────────────────────────────────────────
