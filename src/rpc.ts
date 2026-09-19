@@ -298,6 +298,8 @@ export class PiRpcClient {
   newSession() { this.send({ type: "new_session" }); }
   getState() { this.send({ type: "get_state" }); }
   getMessages() { this.send({ type: "get_messages" }); }
+  /** 本会话 token / 消耗 / 上下文占用（响应 command=get_session_stats） */
+  getSessionStats() { this.send({ type: "get_session_stats" }); }
   respond(obj: any) { this.send({ type: "extension_ui_response", ...obj }); }
 
   /** 请求-响应式调用（按 command 配对响应） */

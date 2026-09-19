@@ -4,9 +4,12 @@ import { DEFAULT_SETTINGS, PiPanelSettings, renderToolsPicker } from "./src/sett
 import { loadModelsFile, ModelInfo, ModelManagerModal, ModelPickerModal, validateModelsFile } from "./src/models";
 import { debugLog } from "./src/log";
 import { DebugModal } from "./src/debug";
+import { OpsLog, parseOpsFolders, registerOpsWatchers } from "./src/ops";
 
 export default class PiPanelPlugin extends Plugin {
   settings: PiPanelSettings = { ...DEFAULT_SETTINGS };
+  /** AI 操作记录（vault 变更），面板只读渲染 */
+  opsLog: OpsLog = new OpsLog();
 
   async onload() {
     setPluginVersion(this.manifest?.version || "?");
@@ -24,6 +27,7 @@ export default class PiPanelPlugin extends Plugin {
       await this.loadSettings();
       debugLog.info(`设置：${JSON.stringify(this.settings)}`);
       this.registerViewType();
+      this.setupOps();
     } catch (e: any) {
       debugLog.error(`onload 失败：${String(e?.stack || e)}`);
       new Notice(`Pi Panel 加载出错：${String(e?.message || e)}（命令面板 → Pi 面板：调试日志）`, 10000);
@@ -133,6 +137,7 @@ export default class PiPanelPlugin extends Plugin {
         leaf,
         this.settings,
         async () => { await this.saveSettings(); },
+        this.opsLog,
       ));
     } catch (e) {
       debugLog.error(`registerView 失败：${String((e as any)?.message || e)}`);
@@ -162,8 +167,16 @@ export default class PiPanelPlugin extends Plugin {
     });
   }
 
+  /** 操作记录有新增时：让已打开的面板（抽屉开着的话）重画 */
+  refreshOpsViews() {
+    this.panelViews().forEach((view) => {
+      if (typeof view?.refreshOps === "function") view.refreshOps();
+    });
+  }
+
   async loadSettings() {
     const raw = await this.loadData();
+    this.rawData = raw || {};
     Object.assign(this.settings, DEFAULT_SETTINGS, raw || {});
     // 旧配置迁移：persistSession:boolean → sessionMode
     if (raw && typeof raw.persistSession === "boolean" && raw.sessionMode === undefined) {
@@ -178,7 +191,35 @@ export default class PiPanelPlugin extends Plugin {
   }
 
   async saveSettings() {
-    await this.saveData(this.settings);
+    // data.json 里既有设置也有操作记录，写回时要一起带（否则记录会被覆盖没）
+    await this.saveData({ ...this.settings, ops: this.opsLog?.serialize() || [] });
+  }
+
+  /** 记录变更后防抖落盘（面板每次变更都写会把磁盘刷爆） */
+  private scheduleOpsSave: () => void = () => { /* setupOps 后替换为真实现 */ };
+
+  /** 记录有变动：延后落盘 + 让已打开的面板重画 */
+  private opsDirty() {
+    this.scheduleOpsSave();
+    this.refreshOpsViews();
+  }
+
+  private rawData: any = null;
+
+  /** 操作记录：装配 + 监听 vault 变更（目录空 / 开关关 = 不记） */
+  private setupOps() {
+    this.opsLog.load(this.rawData?.ops);
+    let timer: number | null = null;
+    this.scheduleOpsSave = () => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => { void this.saveSettings(); }, 1500);
+    };
+    registerOpsWatchers(
+      this,
+      this.opsLog,
+      () => (this.settings.opsEnabled === false ? [] : parseOpsFolders(this.settings.opsFolders)),
+      () => this.opsDirty(),
+    );
   }
 }
 
@@ -256,6 +297,27 @@ class PiSettingTab extends PluginSettingTab {
       void this.plugin.saveSettings();
       this.plugin.bouncePanels();
     });
+
+    new Setting(containerEl)
+      .setName("操作记录")
+      .setDesc("把 pi 在 vault 里的新建/修改/删除/重命名记进面板的「操作记录」抽屉（头部 list 图标开合）")
+      .addToggle(t => t
+        .setValue(this.plugin.settings.opsEnabled !== false)
+        .onChange(async (v) => {
+          this.plugin.settings.opsEnabled = v;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName("操作记录：监听目录")
+      .setDesc("每行一个 vault 相对路径（如 小助理工作区/反馈）。只记这些目录下的文件变更")
+      .addTextArea(t => t
+        .setPlaceholder("小助理工作区/反馈")
+        .setValue(this.plugin.settings.opsFolders || "")
+        .onChange(async (v) => {
+          this.plugin.settings.opsFolders = v;
+          await this.plugin.saveSettings();
+        }));
 
     new Setting(containerEl)
       .setName("会话")

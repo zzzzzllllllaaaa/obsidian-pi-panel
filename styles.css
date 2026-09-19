@@ -721,3 +721,121 @@
 .pi-tools-presets { display: flex; gap: 6px; margin-bottom: 6px; }
 .pi-tools-presets button { font-size: 11.5px; padding: 2px 10px; }
 .pi-tools-note { font-size: 11px; color: var(--text-muted); word-break: break-all; }
+
+
+/* ── 文本可选中：Obsidian 全局 user-select:none，聊天区要能像浏览器一样划选复制 ── */
+.pi-chat,
+.pi-chat * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* ── 头部用量 chip ── */
+.pi-usage {
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+/* ── 操作记录抽屉 ── */
+.pi-ops {
+  flex: 0 0 auto;
+  max-height: 42%;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.pi-ops-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.pi-ops-title {
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.pi-ops-spacer { flex: 1 1 auto; }
+
+.pi-ops-btn {
+  font-size: var(--font-ui-smaller);
+  padding: 2px 8px;
+}
+
+.pi-ops-list {
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+.pi-ops-empty {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  padding: 8px 4px 12px;
+}
+
+.pi-ops-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.pi-ops-row:hover { background: var(--background-modifier-hover); }
+
+.pi-ops-ic {
+  flex: 0 0 16px;
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
+.pi-op-create .pi-ops-ic { color: var(--color-green); }
+.pi-op-delete .pi-ops-ic { color: var(--color-red); }
+.pi-op-modify .pi-ops-ic { color: var(--color-yellow); }
+
+.pi-ops-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pi-ops-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pi-ops-file {
+  font-size: var(--font-ui-small);
+  overflow-wrap: anywhere;
+}
+
+.pi-ops-time {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+
+.pi-ops-path,
+.pi-ops-preview {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.pi-ops-path { color: var(--text-faint); }
+
+/* 拖文件进来时整块高亮 */
+.pi-root.pi-drop {
+  outline: 2px dashed var(--interactive-accent);
+  outline-offset: -4px;
+}
+
+/* 历史会话搜索框 */
+.pi-session-search { padding-bottom: 8px; }
+.pi-session-search input { width: 100%; }

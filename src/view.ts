@@ -38,6 +38,7 @@ import { listSessions, listSessionsRemote, PiSessionInfo, renameSession, renameS
 
 
 
+import { OpsLog } from "./ops";
 import {
 
 
@@ -554,118 +555,69 @@ export class PiSessionPickerModal extends Modal {
 
 
 
+    const searchWrap = contentEl.createDiv("pi-session-search");
+    const search = searchWrap.createEl("input", {
+      type: "text",
+      placeholder: "搜索历史会话：名字 / 摘要 / session id / 路径",
+    });
+
     const list = contentEl.createDiv("pi-session-list");
 
-
-
-    if (this.items.length === 0) {
-
-
-
-      list.createDiv({ cls: "pi-session-empty", text: "该工作目录下没有已保存的会话。先聊几轮（会话策略=新会话并存盘），下次就能在这里看到。" });
-
-
-
-      return;
-
-
-
-    }
-
-
-
-
-
-
-
-    for (const it of this.items) {
-
-
-
-      const row = list.createDiv("pi-session-row");
-
-
-
-      const time = row.createDiv("pi-session-time");
-
-
-
-      time.setText(this.formatTime(it.mtimeMs));
-
-
-
-      const body = row.createDiv("pi-session-body");
-
-
-
-      if (it.name) {
-
-
-
-        body.createDiv({ cls: "pi-session-name", text: it.name });
-
-
-
-        if (it.preview) body.createDiv({ cls: "pi-session-preview-secondary", text: it.preview.slice(0, 120) });
-
-
-
-      } else {
-
-
-
-        body.createDiv({ cls: "pi-session-preview", text: it.preview || "(无文本消息)" });
-
-
-
+    const renderRows = (items: PiSessionInfo[]) => {
+      list.empty();
+      if (this.items.length === 0) {
+        list.createDiv({ cls: "pi-session-empty", text: "该工作目录下没有已保存的会话。先聊几轮（会话策略=新会话并存盘），下次就能在这里看到。" });
+        return;
+      }
+      if (items.length === 0) {
+        list.createDiv({ cls: "pi-session-empty", text: "没有匹配的会话。" });
+        return;
       }
 
+      for (const it of items) {
+        const row = list.createDiv("pi-session-row");
 
+        const time = row.createDiv("pi-session-time");
+        time.setText(this.formatTime(it.mtimeMs));
 
-      const meta = body.createDiv("pi-session-meta");
+        const body = row.createDiv("pi-session-body");
 
+        if (it.name) {
+          body.createDiv({ cls: "pi-session-name", text: it.name });
+          if (it.preview) body.createDiv({ cls: "pi-session-preview-secondary", text: it.preview.slice(0, 120) });
+        } else {
+          body.createDiv({ cls: "pi-session-preview", text: it.preview || "(无文本消息)" });
+        }
 
+        const meta = body.createDiv("pi-session-meta");
 
-      const sameCwd = it.cwd === this.cwd;
+        const sameCwd = it.cwd === this.cwd;
+        meta.setText(`${it.messageCount} msgs · ${it.id.slice(0, 8)}${sameCwd ? "" : " · " + it.cwd}`);
 
+        if (this.cb.onRename) {
+          const renameBtn = row.createEl("button", { cls: "pi-session-rename", attr: { title: "重命名" }, text: "✏️" });
+          renameBtn.addEventListener("click", (e: MouseEvent) => { e.stopPropagation(); this.cb.onRename?.(it); });
+        }
 
-
-      meta.setText(`${it.messageCount} msgs · ${it.id.slice(0, 8)}${sameCwd ? "" : " · " + it.cwd}`);
-
-
-
-      if (this.cb.onRename) {
-
-
-
-        const renameBtn = row.createEl("button", { cls: "pi-session-rename", attr: { title: "重命名" }, text: "✏️" });
-
-
-
-        renameBtn.addEventListener("click", (e: MouseEvent) => { e.stopPropagation(); this.cb.onRename?.(it); });
-
-
-
+        row.addEventListener("click", () => { this.close(); this.cb.onPick(it); });
       }
+    };
 
+    search.addEventListener("input", () => {
+      const q = search.value.trim().toLowerCase();
+      if (!q) { renderRows(this.items); return; }
+      renderRows(this.items.filter((it) => (
+        (it.name || "").toLowerCase().includes(q) ||
+        (it.preview || "").toLowerCase().includes(q) ||
+        (it.id || "").toLowerCase().includes(q) ||
+        (it.cwd || "").toLowerCase().includes(q) ||
+        (it.file || "").toLowerCase().includes(q)
+      )));
+    });
 
-
-      row.addEventListener("click", () => { this.close(); this.cb.onPick(it); });
-
-
-
-    }
-
-
-
+    renderRows(this.items);
+    window.setTimeout(() => search.focus(), 50);
   }
-
-
-
-
-
-
-
   onClose() { this.contentEl.empty(); }
 
 
@@ -722,6 +674,14 @@ export class PiPanelView extends ItemView {
 
 
 
+  /** AI 操作记录（vault 变更），插件层统一维护，这里只渲染 */
+  private opsLog: OpsLog;
+  /** 操作记录抽屉（默认收起） */
+  private opsEl: HTMLElement | null = null;
+  /** 头部用量 chip（get_session_stats） */
+  private usageChip!: HTMLElement;
+  /** 最近一次 get_session_stats 结果 */
+  private usage: any = null;
   private rpc: PiRpcClient | null = null;
 
 
@@ -838,22 +798,11 @@ export class PiPanelView extends ItemView {
 
 
 
-  constructor(leaf: WorkspaceLeaf, settings: PiPanelSettings, saveSettings: () => Promise<void>) {
-
-
-
+  constructor(leaf: WorkspaceLeaf, settings: PiPanelSettings, saveSettings: () => Promise<void>, opsLog: OpsLog) {
     super(leaf);
-
-
-
     this.settings = settings;
-
-
-
     this.saveSettings = saveSettings;
-
-
-
+    this.opsLog = opsLog;
   }
 
 
@@ -988,6 +937,24 @@ export class PiPanelView extends ItemView {
 
 
 
+    // 操作记录抽屉：默认收起，头部 list 按钮开合
+    this.opsEl = root.createDiv("pi-ops");
+    this.opsEl.setCssProps({ display: "none" });
+
+    // 拖文件进面板：图片 → 附件（base64 走 RPC），其它文件 → 补 @vault路径
+    this.registerDomEvent(root, "dragover", (e: DragEvent) => {
+      if (!e.dataTransfer) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      root.addClass("pi-drop");
+    });
+    this.registerDomEvent(root, "dragleave", (e: DragEvent) => {
+      if (e.target === root) root.removeClass("pi-drop");
+    });
+    this.registerDomEvent(root, "drop", (e: DragEvent) => {
+      root.removeClass("pi-drop");
+      this.onDrop(e);
+    });
     this.jumpBtn = root.createDiv("pi-jump");
 
 
@@ -1116,18 +1083,16 @@ export class PiPanelView extends ItemView {
 
 
 
+    this.usageChip = actions.createSpan("pi-pill pi-usage");
+    this.usageChip.setCssProps({ display: "none" });
+    this.usageChip.title = "本会话 token / 上下文用量（点击看明细）";
+    this.usageChip.addEventListener("click", () => {
+      this.rpc?.getSessionStats();
+      if (this.usage) new Notice(this.usageText(this.usage, true), 8000);
+    });
+
     this.statusPill = actions.createSpan("pi-pill");
-
-
-
     this.statusPill.setText("未启动");
-
-
-
-
-
-
-
     const iconBtn = (icon: string, tip: string, onClick: () => void) => {
 
 
@@ -1164,6 +1129,7 @@ export class PiPanelView extends ItemView {
 
 
 
+    iconBtn("list", "操作记录（pi 改过哪些文件）", () => this.toggleOps());
     iconBtn("plus", "新会话", () => this.newSession());
 
 
@@ -1762,6 +1728,8 @@ export class PiPanelView extends ItemView {
 
 
 
+    this.usage = null;
+    this.renderUsage();
   }
 
 
@@ -2180,13 +2148,10 @@ export class PiPanelView extends ItemView {
 
 
         } else if (evt.command === "get_state" && evt.data) {
-
-
-
           this.applyState(evt.data);
-
-
-
+        } else if (evt.command === "get_session_stats" && evt.data) {
+          this.usage = evt.data;
+          this.renderUsage();
         } else if (evt.command === "get_messages" && evt.data) {
 
 
@@ -2204,13 +2169,8 @@ export class PiPanelView extends ItemView {
 
 
           this.systemLine(`已切换模型：${(d?.provider ? d.provider + "/" : "") + (d?.id || "?")}`, "pi-sys");
-
-
-
           this.rpc?.getState();
-
-
-
+          this.rpc?.getSessionStats();
         }
 
 
@@ -2264,13 +2224,8 @@ export class PiPanelView extends ItemView {
 
 
         if (msgs) this.modelChip.setText(this.modelChip.getText().split(" · ")[0] + ` · ${msgs} msgs`);
-
-
-
         this.rpc?.getState();
-
-
-
+        this.rpc?.getSessionStats();
         break;
 
 
@@ -3140,6 +3095,156 @@ export class PiPanelView extends ItemView {
 
 
 
+
+  // ── 用量（get_session_stats） ────────────────────────────────────────────
+
+  private fmtNum(n: number): string {
+    if (typeof n !== "number" || !isFinite(n)) return "?";
+    if (Math.abs(n) >= 1000000) return (n / 1000000).toFixed(1) + "M";
+    if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1) + "k";
+    return String(n);
+  }
+
+  private usageText(u: any, full: boolean): string {
+    const t = u?.tokens || {};
+    const ctx = u?.contextUsage;
+    const parts: string[] = [];
+    if (ctx && typeof ctx.percent === "number") parts.push(`ctx ${ctx.percent}%`);
+    if (ctx && typeof ctx.tokens === "number") parts.push(`${this.fmtNum(ctx.tokens)}/${this.fmtNum(ctx.contextWindow || 0)}`);
+    if (typeof t.total === "number") parts.push(`${this.fmtNum(t.total)} tok`);
+    if (typeof u?.cost === "number" && u.cost > 0) parts.push(`$${u.cost.toFixed(3)}`);
+    if (full) {
+      parts.push(`in ${this.fmtNum(t.input)} / out ${this.fmtNum(t.output)} / cacheR ${this.fmtNum(t.cacheRead)} / cacheW ${this.fmtNum(t.cacheWrite)}`);
+      if (typeof u?.toolCalls === "number") parts.push(`${u.toolCalls} 次工具调用`);
+      if (typeof u?.totalMessages === "number") parts.push(`${u.totalMessages} 条消息`);
+    }
+    return parts.join(" · ") || "(pi 没返回用量)";
+  }
+
+  private renderUsage() {
+    if (!this.usageChip) return;
+    if (!this.usage) { this.usageChip.setCssProps({ display: "none" }); return; }
+    this.usageChip.setText(this.usageText(this.usage, false));
+    this.usageChip.setCssProps({ display: "" });
+    this.usageChip.title = this.usageText(this.usage, true);
+  }
+
+  // ── 操作记录抽屉 ─────────────────────────────────────────────────────────
+
+  toggleOps() {
+    if (!this.opsEl) return;
+    const hidden = this.opsEl.style.display === "none";
+    this.opsEl.style.display = hidden ? "" : "none";
+    if (hidden) this.renderOps();
+  }
+
+  /** 记录变了：抽屉开着才重画（收起时省事） */
+  refreshOps() { if (this.opsEl && this.opsEl.style.display !== "none") this.renderOps(); }
+
+  renderOps() {
+    const box = this.opsEl;
+    if (!box) return;
+    box.empty();
+    const entries = this.opsLog?.entries || [];
+
+    const head = box.createDiv("pi-ops-head");
+    head.createSpan({ cls: "pi-ops-title", text: `操作记录（${entries.length}）` });
+    head.createDiv("pi-ops-spacer");
+    const btn = (label: string, tip: string, fn: () => void) => {
+      const b = head.createEl("button", { cls: "pi-ops-btn", text: label });
+      b.title = tip;
+      b.addEventListener("click", fn);
+    };
+    btn("刷新", "重新渲染列表", () => this.renderOps());
+    btn("清空", "清空记录（不动笔记内容）", () => { this.opsLog?.clear(); this.renderOps(); });
+    btn("关闭", "收起操作记录", () => this.toggleOps());
+
+    const list = box.createDiv("pi-ops-list");
+    if (!entries.length) {
+      list.createDiv({ cls: "pi-ops-empty", text: "暂无记录。pi 在监听目录里新建/修改/删除文件时会留痕；监听目录见设置页。" });
+      return;
+    }
+    for (const op of entries.slice().reverse()) {
+      const row = list.createDiv(`pi-ops-row pi-op-${op.type}`);
+      const ic = row.createDiv("pi-ops-ic");
+      const icon = op.type === "create" ? "file-plus" : op.type === "delete" ? "trash" : op.type === "rename" ? "pencil" : "file-pen";
+      setIcon(ic, icon);
+      const body = row.createDiv("pi-ops-body");
+      const top = body.createDiv("pi-ops-top");
+      top.createSpan({ cls: "pi-ops-file", text: op.file });
+      top.createSpan({ cls: "pi-ops-time", text: op.time });
+      body.createDiv({ cls: "pi-ops-path", text: op.path });
+      if (op.preview) body.createDiv({ cls: "pi-ops-preview", text: op.preview.slice(0, 160) });
+      row.addEventListener("click", () => {
+        const f = this.app.vault.getAbstractFileByPath(op.path);
+        if (f instanceof TFile) void this.app.workspace.getLeaf(false).openFile(f);
+      });
+    }
+  }
+
+  // ── 拖拽 / 粘贴文件 ──────────────────────────────────────────────────────
+
+  private onDrop(e: DragEvent) {
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const files = Array.from(dt.files || []);
+    if (files.length) {
+      for (const f of files) void this.attachFile(f);
+      return;
+    }
+    const text = dt.getData("text/plain");
+    if (text) this.insertIntoComposer(text);
+  }
+
+  /** 统一入口：图片 → base64 附件（走 RPC images）；其它文件 → 补 @vault路径 / 绝对路径 */
+  private async attachFile(f: File) {
+    if (f.type && f.type.startsWith("image/")) {
+      try {
+        const buf = await f.arrayBuffer();
+        this.addAttachment({
+          kind: "image",
+          label: f.name || `图片 ${this.attachments.filter((a) => a.kind === "image").length + 1}`,
+          detail: `${f.type} · ${Math.max(1, Math.round(f.size / 1024))} KB`,
+          data: this.toBase64(buf),
+          mimeType: f.type || "image/png",
+        });
+        debugLog.info(`附件：图片 ${f.name || "(剪贴板)"} ${f.type} ${f.size}B`);
+        return;
+      } catch (err) {
+        debugLog.error(`读取图片失败：${String(err)}`);
+        new Notice("读取图片失败，见调试日志");
+        return;
+      }
+    }
+    const abs = String((f as any).path || "");
+    if (abs) {
+      const rel = this.vaultRelativePath(abs);
+      this.insertIntoComposer(rel ? `@${rel}` : abs);
+      debugLog.info(`附件：文件 ${rel ? "@" + rel : abs}`);
+      return;
+    }
+    this.insertIntoComposer(f.name);
+  }
+
+  /** 绝对路径 → vault 相对路径；不在 vault 里返回 null */
+  private vaultRelativePath(abs: string): string | null {
+    const base = (this.app.vault.adapter as any)?.getBasePath?.();
+    if (!base) return null;
+    const norm = (s: string) => String(s).replace(/\\/g, "/").replace(/\/+$/, "");
+    const b = norm(base);
+    const a = norm(abs);
+    if (!a.toLowerCase().startsWith(b.toLowerCase() + "/")) return null;
+    return a.slice(b.length + 1);
+  }
+
+  private toBase64(buf: ArrayBuffer): string {
+    const bytes = new Uint8Array(buf);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
 
   private renderMarkdown(el: HTMLElement, md: string) {
 
@@ -4232,117 +4337,23 @@ export class PiPanelView extends ItemView {
 
 
   private onPaste(e: ClipboardEvent) {
-
-
-
-    const items = e.clipboardData?.items;
-
-
-
-    if (!items) return;
-
-
-
-    for (let i = 0; i < items.length; i++) {
-
-
-
-      const item = items[i];
-
-
-
-      if (item.type && item.type.startsWith("image/")) {
-
-
-
-        const file = item.getAsFile();
-
-
-
-        if (!file) continue;
-
-
-
-        e.preventDefault();
-
-
-
-        const reader = new FileReader();
-
-
-
-        reader.onload = () => {
-
-
-
-          const result = String(reader.result || "");
-
-
-
-          const comma = result.indexOf(",");
-
-
-
-          const data = comma >= 0 ? result.slice(comma + 1) : result;
-
-
-
-          this.addAttachment({
-
-
-
-            kind: "image",
-
-
-
-            label: `图片 ${this.attachments.filter(a => a.kind === "image").length + 1}`,
-
-
-
-            detail: file.type,
-
-
-
-            data,
-
-
-
-            mimeType: file.type || "image/png",
-
-
-
-          });
-
-
-
-        };
-
-
-
-        reader.readAsDataURL(file);
-
-
-
-        return;
-
-
-
-      }
-
-
-
+    const dt = e.clipboardData;
+    if (!dt) return;
+    const files: File[] = [];
+    if (dt.files && dt.files.length) {
+      for (let i = 0; i < dt.files.length; i++) files.push(dt.files[i]);
     }
-
-
-
+    if (!files.length && dt.items) {
+      for (let i = 0; i < dt.items.length; i++) {
+        const f = dt.items[i].getAsFile?.();
+        if (f) files.push(f);
+      }
+    }
+    const imgs = files.filter((f) => f.type && f.type.startsWith("image/"));
+    if (!imgs.length) return;
+    e.preventDefault();
+    for (const f of imgs) void this.attachFile(f);
   }
-
-
-
-
-
-
-
   // ── 引用 ──────────────────────────────────
 
 
@@ -4927,6 +4938,7 @@ export class PiPanelView extends ItemView {
 
 
 
+    debugLog.info(`发送 prompt：文本 ${text.length} 字 / 附件 ${atts.length} 个 / 图片 ${images.length} 张`);
   }
 
 
