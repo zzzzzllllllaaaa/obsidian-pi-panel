@@ -939,7 +939,7 @@ export class PiPanelView extends ItemView {
 
     // 操作记录抽屉：默认收起，头部 list 按钮开合
     this.opsEl = root.createDiv("pi-ops");
-    this.opsEl.setCssProps({ display: "none" });
+    this.opsEl.setCssProps({ display: this.settings.opsOpen ? "" : "none" });
 
     // 拖文件进面板：图片 → 附件（base64 走 RPC），其它文件 → 补 @vault路径
     this.registerDomEvent(root, "dragover", (e: DragEvent) => {
@@ -3135,10 +3135,21 @@ export class PiPanelView extends ItemView {
     if (!this.opsEl) return;
     const hidden = this.opsEl.style.display === "none";
     this.opsEl.style.display = hidden ? "" : "none";
+    this.settings.opsOpen = hidden;
+    void this.saveSettings();
+    debugLog.info(`操作记录抽屉：${hidden ? "展开" : "收起"}（${this.opsLog?.entries.length || 0} 条）`);
     if (hidden) this.renderOps();
   }
 
-  /** 记录变了：抽屉开着才重画（收起时省事） */
+  /** 供命令面板/ribbon 调用：强制展开并重画 */
+  showOps() {
+    if (!this.opsEl) return;
+    this.opsEl.style.display = "";
+    this.settings.opsOpen = true;
+    void this.saveSettings();
+    debugLog.info(`操作记录抽屉：展开（${this.opsLog?.entries.length || 0} 条）`);
+    this.renderOps();
+  }
   refreshOps() { if (this.opsEl && this.opsEl.style.display !== "none") this.renderOps(); }
 
   renderOps() {
@@ -3148,7 +3159,7 @@ export class PiPanelView extends ItemView {
     const entries = this.opsLog?.entries || [];
 
     const head = box.createDiv("pi-ops-head");
-    head.createSpan({ cls: "pi-ops-title", text: `操作记录（${entries.length}）` });
+    head.createSpan({ cls: "pi-ops-title", text: `AI 操作记录（${entries.length}）` });
     head.createDiv("pi-ops-spacer");
     const btn = (label: string, tip: string, fn: () => void) => {
       const b = head.createEl("button", { cls: "pi-ops-btn", text: label });

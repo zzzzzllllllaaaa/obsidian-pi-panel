@@ -36,6 +36,14 @@ export default class PiPanelPlugin extends Plugin {
 
     this.addRibbonIcon("terminal", "打开 Pi 面板", () => { void this.activate(); });
 
+    this.addRibbonIcon("list", "AI 操作记录", () => { void this.openOps(); });
+
+    this.addCommand({
+      id: "open-ops",
+      name: "AI 操作记录（展开面板抽屉）",
+      callback: () => { void this.openOps(); },
+    });
+
     this.addCommand({
       id: "open",
       name: "打开 Pi 面板",
@@ -157,6 +165,14 @@ export default class PiPanelPlugin extends Plugin {
       }
     }
     if (leaf) workspace.revealLeaf(leaf);
+  }
+
+  /** 命令面板 / ribbon：打开 Pi 面板并展开操作记录抽屉 */
+  async openOps() {
+    await this.activate();
+    const view = this.panelViews()[0] as PiPanelView | undefined;
+    if (view && typeof view.showOps === "function") view.showOps();
+    else debugLog.info("openOps：面板还没就绪，稍后再点一次");
   }
 
   /** 设置变更后重启所有已打开面板里的 pi 进程 */
