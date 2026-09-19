@@ -2071,6 +2071,7 @@ export class PiPanelView extends ItemView {
 
 
 
+      client.getEntries();
       client.getMessages();
 
 
@@ -2149,6 +2150,8 @@ export class PiPanelView extends ItemView {
           this.usage = evt.data;
           debugLog.info(`收到 get_session_stats：ctx ${evt.data?.contextUsage?.percent ?? "?"}% / tokens ${evt.data?.tokens?.total ?? "?"}`);
           this.renderUsage();
+        } else if (evt.command === "get_entries" && evt.data) {
+          this.renderFullHistory(evt.data.entries, evt.data.leafId ?? null);
         } else if (evt.command === "get_messages" && evt.data) {
 
 
@@ -2180,6 +2183,13 @@ export class PiPanelView extends ItemView {
 
 
 
+      case "compaction_end":
+        this.systemLine(
+          `上下文已压缩${evt.reason === "threshold" ? "（自动·接近容量上限）" : evt.reason ? `（${evt.reason}）` : ""}：更早的消息已被摘要，agent 会忘掉细节；完整聊天仍留在上面`,
+          "pi-sys",
+        );
+        debugLog.info(`compaction_end：${JSON.stringify({ reason: evt.reason, aborted: evt.aborted, error: evt.errorMessage })}`);
+        break;
       case "agent_start":
 
 
@@ -2472,6 +2482,51 @@ export class PiPanelView extends ItemView {
 
 
 
+  /** 把 get_entries 的会话树压成「当前分支」的消息序列（含自动压缩前的历史） */
+  private chainMessages(entries: any[], leafId: string | null): any[] {
+    if (!Array.isArray(entries) || !entries.length) return [];
+    const byId = new Map<string, any>();
+    for (const e of entries) if (e && e.id) byId.set(e.id, e);
+    const chain: any[] = [];
+    const seen = new Set<string>();
+    let cur: any = leafId ? byId.get(leafId) : undefined;
+    if (!cur) cur = entries[entries.length - 1];
+    while (cur && cur.id && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      chain.push(cur);
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    }
+    chain.reverse();
+    const stamp = (t: any) => {
+      try { return new Date(t).toLocaleString(); } catch { return String(t || ""); }
+    };
+    const out: any[] = [];
+    for (const e of chain) {
+      if (e.type === "message" && e.message) {
+        out.push(e.message);
+      } else if (e.type === "compaction") {
+        out.push({ role: "pi-notice", content: `── 上下文压缩点 ${stamp(e.timestamp)}：更早的消息已交给摘要，以下是压缩前的完整记录 ──` });
+      } else if (e.type === "branch_summary") {
+        out.push({ role: "pi-notice", content: `── 分支摘要 ${stamp(e.timestamp)} ──` });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * 用 get_entries 回放完整会话（含自动压缩前的历史）。
+   * get_messages 只给「当前上下文」，压缩后旧消息就不在里头了——面板要显示全部记录，
+   * 得走 entries 这条路。
+   */
+  private renderFullHistory(entries: any[], leafId: string | null) {
+    if (!this.pendingHistory) return;
+    const msgs = this.chainMessages(entries, leafId);
+    if (!msgs.length) return;
+    this.pendingHistory = true; // 交给 renderHistory 消费
+    debugLog.info(`完整回放：entries ${entries.length} → 消息 ${msgs.length}（含压缩前历史）`);
+    this.renderHistory(msgs);
+  }
+
   private renderHistory(messages: any[]) {
 
 
@@ -2537,6 +2592,11 @@ export class PiPanelView extends ItemView {
 
 
       if (!text) continue;
+
+      if (role === "pi-notice") {
+        this.systemLine(text, "pi-sys");
+        continue;
+      }
 
 
 
