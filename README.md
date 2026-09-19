@@ -28,12 +28,15 @@ Author **3zh** ｜ License **MIT** ｜ Repo <https://github.com/zzzzzllllllaaaa/
 ## What you get
 
 - **Sidebar chat panel** — ribbon icon or the `Pi Panel: Open panel` command. Streaming replies with thinking blocks (collapsible) and tool-call cards showing name, arguments, duration and output; failed calls expand automatically.
-- **One-click references** — `Note` sends the note you have open (very long notes are sent as `@path` only), `Selection` sends the selected paragraphs with file and line numbers, and images can be pasted straight in.
+- **One-click references** — `Note` sends the note you have open (very long notes are sent as `@path` only), `Selection` sends the selected paragraphs with file and line numbers. Images can be pasted or **dragged into the panel**; other dropped files are inserted as `@path`.
+- **Text you can select** — drag-select and copy from the chat like in a browser.
+- **Usage chip** — the header shows context and token usage for the session (`ctx 30% · 59k/200k · 4.9M tok`); click it for input / output / cache numbers, tool-call count and cost when pi reports one.
 - **Extension prompts stay in the panel** — when pi asks for a confirm / select / input, you answer in the panel, so the agent never hangs waiting on a terminal.
 - **History** — browse `~/.pi/agent/sessions/`, replay a session, rename it, or start fresh.
 - **Model switching** — click the model name in the panel header to switch instantly (no process restart); edit `models.json` from the settings page.
 - **Tool allow-list you control** — whatever you pass to `--tools` is what pi gets. Nothing is enabled behind your back.
 - **Keeping pi's working directory separate from the vault** — point pi at a project folder that has its own `AGENTS.md`, while your notes stay in the vault.
+- **AI operation log** — an optional separate panel that records which notes were created / modified / deleted / renamed while the plugin runs, with time, path and a short preview. Click a row to open the note.
 
 ## Settings
 
@@ -46,6 +49,8 @@ Author **3zh** ｜ License **MIT** ｜ Repo <https://github.com/zzzzzllllllaaaa/
 | Working directory | pi's cwd. Empty = vault root. May differ from the notes folder |
 | Extra system prompt file | Passed to `--append-system-prompt`, e.g. a project's `AGENTS.md` |
 | Default model | Passed as `--model provider/id` at startup; the header lets you switch on the fly |
+| AI operation log | Turns the operation-log panel on/off |
+| Folders to watch | One vault-relative folder per line, e.g. `Notes/Drafts` |
 
 ## Tool permissions
 
@@ -77,6 +82,7 @@ Changing either setting restarts the pi process in the panel; the next message u
 
 The `History` button in the header lists sessions found in `~/.pi/agent/sessions/<cwd slug>/*.jsonl`:
 
+- The list has a search box: filters by name, first-message summary, session id, cwd or file path.
 - Each row shows time, a summary of the first user message, message count and session id; sessions from another cwd are labelled.
 - Clicking a row restarts pi with `--session <file>` and replays that session's history.
 - Header buttons: `New session` and `Continue last (--continue)`.
@@ -113,6 +119,17 @@ Limits:
 - Give remote sessions a narrow allow-list (`read,grep,find,ls`, add `write,edit` if you need edits). `bash` means the phone can drive the whole computer.
 - Always keep a token on the bridge and never expose it on a public port.
 
+## AI operation log
+
+A separate view (`Pi Panel: Open AI operation log`, or the list icon in the ribbon) that lists vault changes seen while the plugin is running:
+
+- Types: create / modify / delete / rename, with time, vault path and the first ~160 characters of the file when there is content.
+- Only folders listed in **Folders to watch** are recorded; nothing is read from folders you did not list.
+- Click a row to open that note. `Refresh` re-renders, `Clear` empties the list (the notes themselves are never touched).
+- The last 300 entries are kept in this plugin's `data.json`.
+
+Note that it records what changed in the watched folders, not which process changed it: an edit you make by hand is listed too. Use it as an activity trail, not as an audit log.
+
 ## Debug log
 
 Three entry points: the bug button in the panel header, the `Pi Panel: View debug log` command, or "Open log" in the settings.
@@ -130,6 +147,7 @@ The log is also written to `<vault>/.obsidian/plugins/pi-panel/pi-panel-debug.lo
   - the **working directory** you configure (may be empty = vault root), used as pi's cwd so it can read an `AGENTS.md` or project files there;
   - the **pi executable path** you configure (for example `%APPDATA%\npm\pi.cmd`);
   - the bridge token, stored in the plugin's `data.json`, when remote mode is enabled.
+- **AI operation log (optional):** when enabled it stores up to 300 entries — relative path, time, change type and the first ~160 characters of the file — in the plugin's `data.json`. Only folders you list under **Folders to watch** are inspected, and nothing is uploaded.
 - **Subprocess:** the plugin spawns `pi` on your machine (`child_process`, desktop only and loaded lazily — never on mobile). Closing the panel stops that process.
 - **Tool permissions:** you decide the allow-list. Granting `bash` grants command execution; judge accordingly.
 
@@ -144,8 +162,6 @@ Bug reports and ideas: GitHub Issues. This is a personal project and I make no p
 # 中文说明
 
 在 Obsidian 侧边栏里跑 [pi coding agent](https://pi.dev)：边看笔记边提问，一键把当前笔记、选中段落或粘贴的图片丢给 pi，pi 直接读写你的库。
-
-作者 **3zh** ｜ 协议 **MIT** ｜ 仓库 <https://github.com/zzzzzllllllaaaa/obsidian-pi-panel>
 
 ## 安装
 
@@ -169,12 +185,15 @@ Bug reports and ideas: GitHub Issues. This is a personal project and I make no p
 ## 功能
 
 - **侧边栏聊天面板** —— ribbon 图标或命令 `Pi 面板：打开面板`。流式输出，thinking 可折叠，工具调用卡片显示名称、参数、耗时、输出，出错自动展开。
-- **一键引用** —— `笔记` 按钮给当前打开的笔记（超长只给 `@路径`），`选区` 按钮给选中段落（带文件:行号），图片直接粘贴。
+- **一键引用** —— `笔记` 按钮给当前打开的笔记（超长只给 `@路径`），`选区` 按钮给选中段落（带文件:行号）。图片可粘贴，也可**直接把文件拖进面板**；拖进来的其它文件按 `@路径` 插入。
+- **聊天文字能划选** —— 像浏览器一样鼠标划选 + 复制。
+- **用量 chip** —— 头部显示本会话的上下文与 token 用量（`ctx 30% · 59k/200k · 4.9M tok`），点开看 input / output / cache 明细、工具调用次数，pi 报了 cost 才有金额。
 - **扩展 UI 弹窗在面板内应答** —— pi 要 confirm / select / input 时不用切终端，agent 不会挂住。
-- **历史会话** —— 扫 `~/.pi/agent/sessions/`，可回放、可重命名、可开新会话。
+- **历史会话** —— 扫 `~/.pi/agent/sessions/`，列表顶部有搜索框（按名字 / 首条摘要 / 会话 id / 工作目录 / 文件路径过滤），可回放、可重命名、可开新会话。
 - **模型即时切换** —— 面板头点模型名即换（不重启进程）；设置页可直接改 `models.json`。
 - **工具白名单自己定** —— `--tools` 传什么就是什么，不会背着你开权限。
 - **工作目录与笔记目录分离** —— 可以把 pi 指向带自己 `AGENTS.md` 的项目目录，笔记仍在库里。
+- **AI 操作记录** —— 可选独立面板，记录插件运行期间被新建 / 修改 / 删除 / 改名的笔记（时间、路径、前 160 字预览），点一行直接打开。
 
 ## 设置项
 
@@ -187,6 +206,8 @@ Bug reports and ideas: GitHub Issues. This is a personal project and I make no p
 | 工作目录 | pi 的 cwd，留空 = vault 根；可与笔记目录不同 |
 | 附加系统提示文件 | 传给 `--append-system-prompt`，例如项目里的 `AGENTS.md` |
 | 默认模型 | 启动时用 `--model provider/id`；面板头可即时切换 |
+| AI 操作记录 | 开关该面板 |
+| 监听目录 | 每行一个 vault 相对路径，例如 `笔记/草稿` |
 
 ## 工具权限
 
@@ -254,6 +275,17 @@ pi 启动时按这个顺序找 `AGENTS.md` / `CLAUDE.md`：`~/.pi/agent/` → cw
 - 远程会话建议用窄白名单（`read,grep,find,ls`，要改笔记再加 `write,edit`）。给了 `bash` = 手机能操作你整台电脑。
 - 桥必须带 token，不要暴露公网端口。
 
+## AI 操作记录
+
+独立面板（命令 `Pi 面板：打开 AI 操作记录面板`，或左侧 ribbon 的列表图标），列出插件运行期间监听到的库内变更：
+
+- 类型：新建 / 修改 / 删除 / 改名，带时间、vault 路径，以及有内容时该文件前 160 字预览。
+- 只记录**监听目录**里列出的文件夹，没列出的目录一个字都不读。
+- 点一行打开对应笔记；`刷新` 重画，`清空` 只清列表（不动笔记）。
+- 只保留最近 300 条，存在本插件的 `data.json`。
+
+它记的是「监听目录里变了什么」，不是「谁改的」：你自己手改的也会被列出来。当活动轨迹看，别当审计日志。
+
 ## 调试日志
 
 三个入口：面板头 🐞 按钮 / 命令 `Pi 面板：查看调试日志` / 设置页「打开日志」。
@@ -267,10 +299,11 @@ pi 启动时按这个顺序找 `AGENTS.md` / `CLAUDE.md`：`~/.pi/agent/` → cw
 - **无遥测、无埋点**：插件不收集也不上传任何数据。
 - **网络**：默认不联网。只有你主动把连接模式改成 **远程** 时，才会用 WebSocket 连你自己指定的桥地址。
 - **访问 vault 之外的文件（桌面端）**：本机跑 pi 难免碰库外路径，具体是：
- - `~/.pi/agent/` —— pi 自己的配置与会话记录（`models.json`、`sessions/*.jsonl`），「历史会话」与「模型管理」直接读写这里；
- - 你设置的**工作目录**（可留空 = vault 根）—— 作为 pi 的 cwd，因为它要从那里读 `AGENTS.md` / 项目文件；
- - 你设置的 **pi 可执行文件路径**（例如 `%APPDATA%\npm\pi.cmd`）；
- - 开远程模式时读桥的 token（存在插件 `data.json` 里）。
+  - `~/.pi/agent/` —— pi 自己的配置与会话记录（`models.json`、`sessions/*.jsonl`），「历史会话」与「模型管理」直接读写这里；
+  - 你设置的**工作目录**（可留空 = vault 根）—— 作为 pi 的 cwd，因为它要从那里读 `AGENTS.md` / 项目文件；
+  - 你设置的 **pi 可执行文件路径**（例如 `%APPDATA%\npm\pi.cmd`）；
+  - 开远程模式时读桥的 token（存在插件 `data.json` 里）。
+- **AI 操作记录（可选）**：开启后最多存 300 条到本插件 `data.json` —— 相对路径、时间、变更类型、文件前 160 字。只读你填在**监听目录**里的文件夹，不上传任何内容。
 - **子进程**：插件在本机 spawn `pi`（`child_process`，仅桌面端且惰性加载，移动端不加载）。关面板会杀掉这个进程。
 - **工具权限**：白名单由你决定；给了 `bash` 就是给了命令执行权，请自行评估。
 
