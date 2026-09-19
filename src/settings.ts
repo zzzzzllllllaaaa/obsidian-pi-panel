@@ -1,5 +1,6 @@
 import { App, Modal, Setting } from "obsidian";
 import { ModelInfo, ModelManagerModal, ModelPickerModal } from "./models";
+import { DEFAULT_OPS_FOLDERS } from "./ops";
 
 export type SessionMode = "ephemeral" | "persist" | "resume";
 
@@ -98,6 +99,10 @@ export interface PiPanelSettings {
   bridgeUrl: string;
   /** 桥 token（与启动桥时 --token 一致） */
   bridgeToken: string;
+  /** 是否记录「AI 对 vault 文件做了什么」（新建/修改/删除/重命名） */
+  opsEnabled: boolean;
+  /** 操作记录监听目录（每行一个 vault 相对路径） */
+  opsFolders: string;
   /** 旧字段，仅用于配置迁移 */
   persistSession?: boolean;
 }
@@ -114,6 +119,8 @@ export const DEFAULT_SETTINGS: PiPanelSettings = {
   connectionMode: "local",
   bridgeUrl: "",
   bridgeToken: "",
+  opsEnabled: true,
+  opsFolders: DEFAULT_OPS_FOLDERS.join("\n"),
 };
 
 export class PiSettingsModal extends Modal {
@@ -256,6 +263,21 @@ export class PiSettingsModal extends Modal {
       .setName("Vault 根目录（只读）")
       .setDesc("pi 能读写的笔记根目录")
       .addText(t => { t.setValue(this.cwd || "(未知)"); t.setDisabled(true); });
+
+    new Setting(contentEl)
+      .setName("操作记录")
+      .setDesc("把 pi 在 vault 里的新建/修改/删除/重命名记到面板的「操作记录」抽屉（头部 list 图标）")
+      .addToggle(t => t
+        .setValue(this.settings.opsEnabled)
+        .onChange(v => { this.settings.opsEnabled = v; }));
+
+    new Setting(contentEl)
+      .setName("操作记录：监听目录")
+      .setDesc("每行一个 vault 相对路径，只记这些目录下的文件变更；留空 = 不记")
+      .addTextArea(t => t
+        .setPlaceholder("小助理工作区/反馈")
+        .setValue(this.settings.opsFolders)
+        .onChange(v => { this.settings.opsFolders = v; }));
 
     const row = contentEl.createDiv("pi-modal-actions");
     const cancel = row.createEl("button", { text: "取消" });
