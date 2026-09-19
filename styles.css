@@ -737,13 +737,11 @@
 }
 
 /* ── 操作记录抽屉 ── */
-.pi-ops {
-  flex: 0 0 auto;
-  max-height: 42%;
+.pi-ops-view {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
+  height: 100%;
+  padding: 0 4px 8px;
 }
 
 .pi-ops-head {

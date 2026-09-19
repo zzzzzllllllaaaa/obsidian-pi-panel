@@ -103,8 +103,6 @@ export interface PiPanelSettings {
   opsEnabled: boolean;
   /** 操作记录监听目录（每行一个 vault 相对路径） */
   opsFolders: string;
-  /** 操作记录抽屉是否展开（记住上次状态） */
-  opsOpen: boolean;
   /** 旧字段，仅用于配置迁移 */
   persistSession?: boolean;
 }
@@ -123,7 +121,6 @@ export const DEFAULT_SETTINGS: PiPanelSettings = {
   bridgeToken: "",
   opsEnabled: true,
   opsFolders: DEFAULT_OPS_FOLDERS.join("\n"),
-  opsOpen: true,
 };
 
 export class PiSettingsModal extends Modal {
