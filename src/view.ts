@@ -38,7 +38,7 @@ import { listSessions, listSessionsRemote, PiSessionInfo, renameSession, renameS
 
 
 
-import { OpsLog } from "./ops";
+import { openOpsView } from "./ops";
 import {
 
 
@@ -675,9 +675,7 @@ export class PiPanelView extends ItemView {
 
 
   /** AI 操作记录（vault 变更），插件层统一维护，这里只渲染 */
-  private opsLog: OpsLog;
   /** 操作记录抽屉（默认收起） */
-  private opsEl: HTMLElement | null = null;
   /** 头部用量 chip（get_session_stats） */
   private usageChip!: HTMLElement;
   /** 最近一次 get_session_stats 结果 */
@@ -798,11 +796,10 @@ export class PiPanelView extends ItemView {
 
 
 
-  constructor(leaf: WorkspaceLeaf, settings: PiPanelSettings, saveSettings: () => Promise<void>, opsLog: OpsLog) {
+  constructor(leaf: WorkspaceLeaf, settings: PiPanelSettings, saveSettings: () => Promise<void>) {
     super(leaf);
     this.settings = settings;
     this.saveSettings = saveSettings;
-    this.opsLog = opsLog;
   }
 
 
@@ -938,8 +935,6 @@ export class PiPanelView extends ItemView {
 
 
     // 操作记录抽屉：默认收起，头部 list 按钮开合
-    this.opsEl = root.createDiv("pi-ops");
-    this.opsEl.setCssProps({ display: this.settings.opsOpen ? "" : "none" });
 
     // 拖文件进面板：图片 → 附件（base64 走 RPC），其它文件 → 补 @vault路径
     this.registerDomEvent(root, "dragover", (e: DragEvent) => {
@@ -1130,7 +1125,7 @@ export class PiPanelView extends ItemView {
 
 
 
-    iconBtn("list", "操作记录（pi 改过哪些文件）", () => this.toggleOps());
+    iconBtn("list", "AI 操作记录（独立面板）", () => void openOpsView(this.app));
     iconBtn("plus", "新会话", () => this.newSession());
 
 
@@ -3131,70 +3126,6 @@ export class PiPanelView extends ItemView {
     this.usageChip.setText(text);
     this.usageChip.title = this.usageText(this.usage, true);
     debugLog.info(`用量 chip：${text}`);
-  }
-
-  // ── 操作记录抽屉 ─────────────────────────────────────────────────────────
-
-  toggleOps() {
-    if (!this.opsEl) return;
-    const hidden = this.opsEl.style.display === "none";
-    this.opsEl.style.display = hidden ? "" : "none";
-    this.settings.opsOpen = hidden;
-    void this.saveSettings();
-    debugLog.info(`操作记录抽屉：${hidden ? "展开" : "收起"}（${this.opsLog?.entries.length || 0} 条）`);
-    if (hidden) this.renderOps();
-  }
-
-  /** 供命令面板/ribbon 调用：强制展开并重画 */
-  showOps() {
-    if (!this.opsEl) return;
-    this.opsEl.style.display = "";
-    this.settings.opsOpen = true;
-    void this.saveSettings();
-    debugLog.info(`操作记录抽屉：展开（${this.opsLog?.entries.length || 0} 条）`);
-    this.renderOps();
-  }
-  refreshOps() { if (this.opsEl && this.opsEl.style.display !== "none") this.renderOps(); }
-
-  renderOps() {
-    const box = this.opsEl;
-    if (!box) return;
-    box.empty();
-    const entries = this.opsLog?.entries || [];
-
-    const head = box.createDiv("pi-ops-head");
-    head.createSpan({ cls: "pi-ops-title", text: `AI 操作记录（${entries.length}）` });
-    head.createDiv("pi-ops-spacer");
-    const btn = (label: string, tip: string, fn: () => void) => {
-      const b = head.createEl("button", { cls: "pi-ops-btn", text: label });
-      b.title = tip;
-      b.addEventListener("click", fn);
-    };
-    btn("刷新", "重新渲染列表", () => this.renderOps());
-    btn("清空", "清空记录（不动笔记内容）", () => { this.opsLog?.clear(); this.renderOps(); });
-    btn("关闭", "收起操作记录", () => this.toggleOps());
-
-    const list = box.createDiv("pi-ops-list");
-    if (!entries.length) {
-      list.createDiv({ cls: "pi-ops-empty", text: "暂无记录。pi 在监听目录里新建/修改/删除文件时会留痕；监听目录见设置页。" });
-      return;
-    }
-    for (const op of entries.slice().reverse()) {
-      const row = list.createDiv(`pi-ops-row pi-op-${op.type}`);
-      const ic = row.createDiv("pi-ops-ic");
-      const icon = op.type === "create" ? "file-plus" : op.type === "delete" ? "trash" : op.type === "rename" ? "pencil" : "file-pen";
-      setIcon(ic, icon);
-      const body = row.createDiv("pi-ops-body");
-      const top = body.createDiv("pi-ops-top");
-      top.createSpan({ cls: "pi-ops-file", text: op.file });
-      top.createSpan({ cls: "pi-ops-time", text: op.time });
-      body.createDiv({ cls: "pi-ops-path", text: op.path });
-      if (op.preview) body.createDiv({ cls: "pi-ops-preview", text: op.preview.slice(0, 160) });
-      row.addEventListener("click", () => {
-        const f = this.app.vault.getAbstractFileByPath(op.path);
-        if (f instanceof TFile) void this.app.workspace.getLeaf(false).openFile(f);
-      });
-    }
   }
 
   // ── 拖拽 / 粘贴文件 ──────────────────────────────────────────────────────
