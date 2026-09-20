@@ -42,6 +42,11 @@ export class PiOpsView extends ItemView {
     this.listEl = null;
   }
 
+  /** 插件层（main.ts refreshOpsViews）通过这个方法要求重画 */
+  refresh() {
+    this.render();
+  }
+
   render() {
     const entries = this.opsLog.entries;
     this.titleEl?.setText(`AI 操作记录（${entries.length}）`);

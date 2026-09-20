@@ -29,6 +29,9 @@ export default class PiPanelPlugin extends Plugin {
       debugLog.info(`设置：${JSON.stringify(this.settings)}`);
       this.registerViewType();
       this.setupOps();
+      // 布局里的 views 可能在 setupOps 之前就建好了（那时 opsLog 还是空的），加载完记录后强制重画一次
+      this.app.workspace.onLayoutReady(() => this.refreshOpsViews());
+      this.refreshOpsViews();
     } catch (e: any) {
       debugLog.error(`onload 失败：${String(e?.stack || e)}`);
       new Notice(`Pi Panel 加载出错：${String(e?.message || e)}（命令面板 → Pi 面板：调试日志）`, 10000);
@@ -182,11 +185,20 @@ export default class PiPanelPlugin extends Plugin {
     });
   }
 
-  /** 操作记录有新增时：让已打开的面板（抽屉开着的话）重画 */
+  /** 操作记录有新增时：让已打开的「AI 操作记录」面板重画 */
   refreshOpsViews() {
-    this.app.workspace.getLeavesOfType(VIEW_TYPE_PI_OPS).forEach((leaf) => {
-      const view = leaf.view as unknown as { refresh?: () => void };
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_PI_OPS);
+    debugLog.info(`操作记录面板刷新：${leaves.length} 个 leaf`);
+    leaves.forEach((leaf) => {
+      const view = leaf.view as unknown as { refresh?: () => void; render?: () => void; getViewType?: () => string };
+      // leaf 里存的不是我们的视图（旧版本残留 / 布局恢复时视图没建起来）→ 用 state 重建一次
+      if (typeof view?.getViewType === "function" && view.getViewType() !== VIEW_TYPE_PI_OPS && view.getViewType() !== "deferred") {
+        debugLog.info(`操作记录面板 leaf 类型异常（${view.getViewType()}）→ 重建`);
+        try { void leaf.setViewState({ type: VIEW_TYPE_PI_OPS, active: false }); } catch (e) { debugLog.error(`重建失败：${String(e)}`); }
+        return;
+      }
       if (typeof view?.refresh === "function") view.refresh();
+      else if (typeof view?.render === "function") view.render();
     });
   }
 
