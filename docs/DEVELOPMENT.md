@@ -24,7 +24,14 @@ node smoke_ops.js H:/kaifa/obsidian-pi-panel/main.js F:/obsidianwenjian/.obsidia
 ```
 
 输出 `SMOKE: PASS` 即：opsLog 载入 N 条 → `setViewState` 被调 → 面板 listEl 有 N 个 row → 再来一次 vault 变更自动变 N+1。
-构建前跑一遍，比在真 Obsidian 里试快得多（专治「面板空白」这类显示层问题）。
+两个场景都测（后台 tab 的两种真实形态）：
+
+- `deferred`：`leaf.view` 是空壳（`getViewType()` 已是 `pi-ops-view`，身上啥方法都没有）
+- `warm`：视图对象建好了、但 Obsidian **没叫 onOpen**（不显示就不 open）→ 面板 DOM 没建
+
+`warm` 那个就是「面板一片空白」的真凶：以前 `render()` 里 `if (!this.listEl) return;` 直接在
+打日志之前 return，于是日志里只有 `命中 1 个 leaf（需建 0）`、什么都没有，啥也看不出来。
+现在 DOM 由 `buildDom()` 按需自建（`onOpen` / `refresh` 谁先来谁建），实例化后也会主动叫一次 refresh。
 
 ## 发版流程
 

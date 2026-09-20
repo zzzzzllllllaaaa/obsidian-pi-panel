@@ -189,26 +189,33 @@ export default class PiPanelPlugin extends Plugin {
    * 操作记录有新增时：让「AI 操作记录」面板重画。
    * 不能用 getLeavesOfType：后台 tab 是 deferred view，数不到。
    * 也不能只看类型：deferred 时 getViewType() 已经是 pi-ops-view 但身上没有任何方法
-   * → 判据 = 视图会不会画；不会画就就地实例化。
+   * → 判据 = 视图会不会画；不会画就地实例化。
+   * 实例化完必须自己再叫一次 refresh：后台 tab 建了视图也**不会自动 onOpen**，
+   * 而 DOM 只在 onOpen 里建 → 不叫就永远空白。
    */
   refreshOpsViews() {
     let hit = 0;
     let built = 0;
+    let drawn = 0;
+    const targets: any[] = [];
     this.app.workspace.iterateAllLeaves((leaf) => {
       if (!isOpsLeaf(leaf)) return;
       hit++;
+      targets.push(leaf);
+    });
+    const run = async (leaf: any) => {
       if (!isOpsViewLive(leaf)) {
         built++;
-        debugLog.info("操作记录面板：deferred 未实例化 → 就地建出来");
-        void materializeOpsLeaf(leaf).then((ok) => {
-          debugLog.info(`操作记录面板：就地实例化 ${ok ? "成功" : "失败"}`);
-        });
-        return;
+        debugLog.info("操作记录面板：deferred → 就地实例化");
+        const ok = await materializeOpsLeaf(leaf);
+        debugLog.info(`操作记录面板：就地实例化 ${ok ? "成功" : "失败"}`);
+        if (!ok) return;
       }
-      const view = leaf.view as unknown as { refresh?: () => void; render?: () => void };
-      if (typeof view.refresh === "function") view.refresh();
-      else if (typeof view.render === "function") view.render();
-    });
+      const view = leaf.view as { refresh?: () => void; render?: () => void } | undefined;
+      if (typeof view?.refresh === "function") { view.refresh(); drawn++; }
+      else if (typeof view?.render === "function") { view.render(); drawn++; }
+    };
+    for (const leaf of targets) void run(leaf);
     debugLog.info(`操作记录面板刷新：命中 ${hit} 个 leaf（需建 ${built}）`);
   }
 
