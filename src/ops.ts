@@ -23,14 +23,63 @@ export const OPS_MAX = 300;
 /** 独立面板的视图类型（AI 操作记录，单独一个 leaf） */
 export const VIEW_TYPE_PI_OPS = "pi-ops-view";
 
-/** 打开（或聚焦）AI 操作记录面板：没有就开在右侧栏 */
-export async function openOpsView(app: App) {
-  if (!app.workspace.getLeavesOfType(VIEW_TYPE_PI_OPS).length) {
-    const leaf: WorkspaceLeaf | null = app.workspace.getRightLeaf(false);
-    if (leaf) await leaf.setViewState({ type: VIEW_TYPE_PI_OPS, active: true });
+/** 面板视图该有的两个方法（deferred 视图一个都没有） */
+type OpsViewLike = { refresh?: () => void; render?: () => void; getViewType?: () => string };
+
+/**
+ * 这个 leaf 是不是「AI 操作记录」面板。
+ * 注意：后台 tab 是 deferred view，`view.getViewType()` 可能直接返回 `pi-ops-view`
+ * 而其实什么方法都没有（实测就是这样，`getLeavesOfType` 也数不到）。
+ * 所以判据 = 实时类型 / 存的 state 类型 / 视图自己会不会 render。
+ */
+export function isOpsLeaf(leaf: WorkspaceLeaf): boolean {
+  const view = (leaf as any)?.view as OpsViewLike | undefined;
+  const liveType = typeof view?.getViewType === "function" ? view.getViewType() : "";
+  const raw: any = (leaf as any).getViewState?.() || {};
+  const inner = typeof raw.state === "string" ? raw.state : raw.state?.type;
+  const stateType = raw.type === "deferred" ? inner : raw.type;
+  if (liveType === VIEW_TYPE_PI_OPS || stateType === VIEW_TYPE_PI_OPS) return true;
+  return false;
+}
+
+/** 这个 leaf 里的视图是不是已经真的建好了（deferred 视图建不出来） */
+export function isOpsViewLive(leaf: WorkspaceLeaf): boolean {
+  const view = (leaf as any)?.view as OpsViewLike | undefined;
+  return typeof view?.refresh === "function" || typeof view?.render === "function";
+}
+
+/** 扫描整个 workspace 找「AI 操作记录」的 leaf（含后台 deferred tab） */
+export function findOpsLeaves(app: App): WorkspaceLeaf[] {
+  const out: WorkspaceLeaf[] = [];
+  app.workspace.iterateAllLeaves((leaf) => {
+    if (isOpsLeaf(leaf)) out.push(leaf);
+  });
+  return out;
+}
+
+/** 把 deferred 的 leaf 逼成真视图（保留原位置，不新开面板） */
+export async function materializeOpsLeaf(leaf: WorkspaceLeaf): Promise<boolean> {
+  try {
+    await leaf.setViewState({ type: VIEW_TYPE_PI_OPS, active: false });
+    return true;
+  } catch {
+    return false;
   }
-  const leaf = app.workspace.getLeavesOfType(VIEW_TYPE_PI_OPS)[0];
-  if (leaf) app.workspace.revealLeaf(leaf);
+}
+
+/** 打开（或聚焦）AI 操作记录面板：已是 deferred 的原 tab 会被就地建出来，找不到才新开在右侧栏 */
+export async function openOpsView(app: App) {
+  const existing = findOpsLeaves(app);
+  if (existing.length) {
+    const leaf = existing[0];
+    if (!isOpsViewLive(leaf)) await materializeOpsLeaf(leaf);
+    app.workspace.revealLeaf(leaf);
+    return;
+  }
+  const leaf: WorkspaceLeaf | null = app.workspace.getRightLeaf(false);
+  if (leaf) await leaf.setViewState({ type: VIEW_TYPE_PI_OPS, active: true });
+  const created = findOpsLeaves(app)[0];
+  if (created) app.workspace.revealLeaf(created);
 }
 
 /** 列表渲染：独立面板用；点一行打开对应笔记 */
@@ -98,6 +147,8 @@ export function fmtOpTime(ts: number): string {
 export class OpsLog {
   entries: OpEntry[] = [];
   private onChange: () => void;
+  /** 面板订阅：记录一变就重画（不依赖插件层去找 leaf） */
+  private listeners: Array<() => void> = [];
 
   constructor(onChange: () => void = () => { /* noop */ }) {
     this.onChange = onChange;
@@ -114,6 +165,22 @@ export class OpsLog {
     return this.entries.slice(-OPS_MAX);
   }
 
+  /** 面板 onOpen 时订阅，onClose 时取消 */
+  subscribe(fn: () => void): () => void {
+    this.listeners.push(fn);
+    return () => {
+      const i = this.listeners.indexOf(fn);
+      if (i >= 0) this.listeners.splice(i, 1);
+    };
+  }
+
+  private notify() {
+    this.onChange();
+    for (const fn of this.listeners.slice()) {
+      try { fn(); } catch { /* 单个订阅者出错不影响别人 */ }
+    }
+  }
+
   add(type: OpType, path: string): OpEntry {
     const ts = Date.now();
     const entry: OpEntry = {
@@ -125,13 +192,18 @@ export class OpsLog {
     };
     this.entries.push(entry);
     if (this.entries.length > OPS_MAX) this.entries.splice(0, this.entries.length - OPS_MAX);
-    this.onChange();
+    this.notify();
     return entry;
+  }
+
+  /** 预览是异步补的，补完要让它重画 */
+  touch() {
+    this.notify();
   }
 
   clear() {
     this.entries = [];
-    this.onChange();
+    this.notify();
   }
 }
 
@@ -163,6 +235,7 @@ export function registerOpsWatchers(
         .cachedRead(file)
         .then((c: string) => {
           entry.preview = String(c || "").slice(0, 160).replace(/\s+/g, " ").trim();
+          log.touch();
           onChange();
         })
         .catch(() => { /* 读不到就算了 */ });

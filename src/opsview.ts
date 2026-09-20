@@ -7,10 +7,13 @@ export class PiOpsView extends ItemView {
   private opsLog: OpsLog;
   private titleEl: HTMLElement | null = null;
   private listEl: HTMLElement | null = null;
+  private unsubscribe: (() => void) | null = null;
 
   constructor(leaf: WorkspaceLeaf, opsLog: OpsLog) {
     super(leaf);
     this.opsLog = opsLog;
+    // 记录一变就重画：不依赖插件层去「找到这个 leaf」（后台 tab 是 deferred，找不到）
+    this.unsubscribe = this.opsLog.subscribe(() => this.render());
   }
 
   getViewType() { return VIEW_TYPE_PI_OPS; }
@@ -38,6 +41,8 @@ export class PiOpsView extends ItemView {
   }
 
   async onClose() {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
     this.titleEl = null;
     this.listEl = null;
   }

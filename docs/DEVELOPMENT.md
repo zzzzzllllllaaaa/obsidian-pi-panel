@@ -14,6 +14,18 @@ npm run build                 # 产物 main.js（仓库根）
 
 `main.js` 在 `.gitignore` 里（本地构建产物不提交），Release 资产才带它。
 
+## 冒烟测试（不开 Obsidian）
+
+`smoke_ops.js` 把 `require("obsidian")` 指向桩，跑 `plugin.onload()` + 一次假 vault 变更，验证「AI 操作记录」面板在
+**deferred leaf**（后台 tab）下能被就地建出来并渲染：
+
+```bash
+node smoke_ops.js H:/kaifa/obsidian-pi-panel/main.js F:/obsidianwenjian/.obsidian/plugins/pi-panel/data.json
+```
+
+输出 `SMOKE: PASS` 即：opsLog 载入 N 条 → `setViewState` 被调 → 面板 listEl 有 N 个 row → 再来一次 vault 变更自动变 N+1。
+构建前跑一遍，比在真 Obsidian 里试快得多（专治「面板空白」这类显示层问题）。
+
 ## 发版流程
 
 Obsidian 是**拿 release 的 tag 去和 `manifest.json` 的 `version` 精确对齐**的，所以顺序不能乱：

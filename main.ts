@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS, PiPanelSettings, renderToolsPicker } from "./src/sett
 import { loadModelsFile, ModelInfo, ModelManagerModal, ModelPickerModal, validateModelsFile } from "./src/models";
 import { debugLog } from "./src/log";
 import { DebugModal } from "./src/debug";
-import { OpsLog, openOpsView, OPS_ALL, parseOpsFolders, registerOpsWatchers, VIEW_TYPE_PI_OPS } from "./src/ops";
+import { OpsLog, openOpsView, OPS_ALL, parseOpsFolders, registerOpsWatchers, isOpsLeaf, isOpsViewLive, materializeOpsLeaf, VIEW_TYPE_PI_OPS } from "./src/ops";
 import { PiOpsView } from "./src/opsview";
 
 export default class PiPanelPlugin extends Plugin {
@@ -185,21 +185,31 @@ export default class PiPanelPlugin extends Plugin {
     });
   }
 
-  /** 操作记录有新增时：让已打开的「AI 操作记录」面板重画 */
+  /**
+   * 操作记录有新增时：让「AI 操作记录」面板重画。
+   * 不能用 getLeavesOfType：后台 tab 是 deferred view，数不到。
+   * 也不能只看类型：deferred 时 getViewType() 已经是 pi-ops-view 但身上没有任何方法
+   * → 判据 = 视图会不会画；不会画就就地实例化。
+   */
   refreshOpsViews() {
-    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_PI_OPS);
-    debugLog.info(`操作记录面板刷新：${leaves.length} 个 leaf`);
-    leaves.forEach((leaf) => {
-      const view = leaf.view as unknown as { refresh?: () => void; render?: () => void; getViewType?: () => string };
-      // leaf 里存的不是我们的视图（旧版本残留 / 布局恢复时视图没建起来）→ 用 state 重建一次
-      if (typeof view?.getViewType === "function" && view.getViewType() !== VIEW_TYPE_PI_OPS && view.getViewType() !== "deferred") {
-        debugLog.info(`操作记录面板 leaf 类型异常（${view.getViewType()}）→ 重建`);
-        try { void leaf.setViewState({ type: VIEW_TYPE_PI_OPS, active: false }); } catch (e) { debugLog.error(`重建失败：${String(e)}`); }
+    let hit = 0;
+    let built = 0;
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      if (!isOpsLeaf(leaf)) return;
+      hit++;
+      if (!isOpsViewLive(leaf)) {
+        built++;
+        debugLog.info("操作记录面板：deferred 未实例化 → 就地建出来");
+        void materializeOpsLeaf(leaf).then((ok) => {
+          debugLog.info(`操作记录面板：就地实例化 ${ok ? "成功" : "失败"}`);
+        });
         return;
       }
-      if (typeof view?.refresh === "function") view.refresh();
-      else if (typeof view?.render === "function") view.render();
+      const view = leaf.view as unknown as { refresh?: () => void; render?: () => void };
+      if (typeof view.refresh === "function") view.refresh();
+      else if (typeof view.render === "function") view.render();
     });
+    debugLog.info(`操作记录面板刷新：命中 ${hit} 个 leaf（需建 ${built}）`);
   }
 
   async loadSettings() {
