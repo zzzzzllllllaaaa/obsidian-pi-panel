@@ -273,7 +273,7 @@ export class PiSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName("操作记录：监听目录")
-      .setDesc("每行一个 vault 相对路径，只记这些目录下的文件变更；留空 = 不记")
+      .setDesc("每行一个 vault 相对路径，只记这些目录下的文件变更；填 `/` 或 `*` = 整个库（.obsidian 与回收站除外）；留空 = 不记")
       .addTextArea(t => t
         .setPlaceholder("小助理工作区/反馈")
         .setValue(this.settings.opsFolders)

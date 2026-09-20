@@ -50,7 +50,7 @@ Author **3zh** ｜ License **MIT** ｜ Repo <https://github.com/zzzzzllllllaaaa/
 | Extra system prompt file | Passed to `--append-system-prompt`, e.g. a project's `AGENTS.md` |
 | Default model | Passed as `--model provider/id` at startup; the header lets you switch on the fly |
 | AI operation log | Turns the operation-log panel on/off |
-| Folders to watch | One vault-relative folder per line, e.g. `Notes/Drafts` |
+| Folders to watch | One vault-relative folder per line, e.g. `Notes/Drafts`. `/` or `*` = the whole vault, empty = record nothing |
 
 ## Tool permissions
 
@@ -124,7 +124,7 @@ Limits:
 A separate view (`Pi Panel: Open AI operation log`, or the list icon in the ribbon) that lists vault changes seen while the plugin is running:
 
 - Types: create / modify / delete / rename, with time, vault path and the first ~160 characters of the file when there is content.
-- Only folders listed in **Folders to watch** are recorded; nothing is read from folders you did not list.
+- Only folders listed in **Folders to watch** are recorded; nothing is read from folders you did not list. Put `/` (or `*`) there to record the whole vault — `.obsidian` and the trash are always skipped.
 - Click a row to open that note. `Refresh` re-renders, `Clear` empties the list (the notes themselves are never touched).
 - The last 300 entries are kept in this plugin's `data.json`.
 
@@ -207,7 +207,7 @@ Bug reports and ideas: GitHub Issues. This is a personal project and I make no p
 | 附加系统提示文件 | 传给 `--append-system-prompt`，例如项目里的 `AGENTS.md` |
 | 默认模型 | 启动时用 `--model provider/id`；面板头可即时切换 |
 | AI 操作记录 | 开关该面板 |
-| 监听目录 | 每行一个 vault 相对路径，例如 `笔记/草稿` |
+| 监听目录 | 每行一个 vault 相对路径，例如 `笔记/草稿`；`/` 或 `*` = 整个库，留空 = 不记 |
 
 ## 工具权限
 
@@ -280,7 +280,7 @@ pi 启动时按这个顺序找 `AGENTS.md` / `CLAUDE.md`：`~/.pi/agent/` → cw
 独立面板（命令 `Pi 面板：打开 AI 操作记录面板`，或左侧 ribbon 的列表图标），列出插件运行期间监听到的库内变更：
 
 - 类型：新建 / 修改 / 删除 / 改名，带时间、vault 路径，以及有内容时该文件前 160 字预览。
-- 只记录**监听目录**里列出的文件夹，没列出的目录一个字都不读。
+- 只记录**监听目录**里列出的文件夹，没列出的目录一个字都不读；填 `/`（或 `*`）= 整个库，`.obsidian` 和回收站永远跳过。
 - 点一行打开对应笔记；`刷新` 重画，`清空` 只清列表（不动笔记）。
 - 只保留最近 300 条，存在本插件的 `data.json`。
 

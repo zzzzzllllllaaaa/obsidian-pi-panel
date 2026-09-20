@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS, PiPanelSettings, renderToolsPicker } from "./src/sett
 import { loadModelsFile, ModelInfo, ModelManagerModal, ModelPickerModal, validateModelsFile } from "./src/models";
 import { debugLog } from "./src/log";
 import { DebugModal } from "./src/debug";
-import { OpsLog, openOpsView, parseOpsFolders, registerOpsWatchers, VIEW_TYPE_PI_OPS } from "./src/ops";
+import { OpsLog, openOpsView, OPS_ALL, parseOpsFolders, registerOpsWatchers, VIEW_TYPE_PI_OPS } from "./src/ops";
 import { PiOpsView } from "./src/opsview";
 
 export default class PiPanelPlugin extends Plugin {
@@ -225,6 +225,10 @@ export default class PiPanelPlugin extends Plugin {
   /** 操作记录：装配 + 监听 vault 变更（目录空 / 开关关 = 不记） */
   private setupOps() {
     this.opsLog.load(this.rawData?.ops);
+    const folders = parseOpsFolders(this.settings.opsFolders);
+    debugLog.info(
+      `操作记录监听：${this.settings.opsEnabled === false ? "已关闭" : folders.includes(OPS_ALL) ? "整个库（.obsidian/.trash 除外）" : folders.join(" / ") || "（空 = 不记）"}`,
+    );
     let timer: number | null = null;
     this.scheduleOpsSave = () => {
       if (timer) window.clearTimeout(timer);

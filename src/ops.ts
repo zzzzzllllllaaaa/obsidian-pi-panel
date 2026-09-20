@@ -57,6 +57,8 @@ export function renderOpsList(box: HTMLElement, entries: OpEntry[], openFile: (p
   }
 }
 
+export const OPS_ALL = "*";
+
 /** 默认监听目录；在设置页可改（每行一个 vault 相对路径） */
 export const DEFAULT_OPS_FOLDERS = [
   "小助理工作区/项目",
@@ -66,10 +68,21 @@ export const DEFAULT_OPS_FOLDERS = [
 ];
 
 export function parseOpsFolders(v: string): string[] {
-  return String(v || "")
+  const raw = String(v || "")
     .split(/[\n,;]+/)
-    .map((s) => s.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, ""))
+    .map((s) => s.trim())
     .filter(Boolean);
+  const out: string[] = [];
+  for (const s of raw) {
+    const t = s.replace(/\\/g, "/");
+    // "/"、"*"、"**" → 整个库（.obsidian/.trash 除外）
+    if (/^\/*$/.test(t) || /^\*+$/.test(t) || t === "全部" || t.toLowerCase() === "all") {
+      return [OPS_ALL];
+    }
+    const d = t.replace(/^\/+|\/+$/g, "");
+    if (d) out.push(d);
+  }
+  return out;
 }
 
 function pad2(n: number): string {
@@ -137,7 +150,10 @@ export function registerOpsWatchers(
   const watched = (f: any): boolean => {
     if (!f || typeof f.path !== "string") return false;
     const p = f.path as string;
+    // 插件配置目录 / 回收站里的变动不算笔记
+    if (p.startsWith(".obsidian/") || p.startsWith(".trash/")) return false;
     const folders = getFolders();
+    if (folders.includes(OPS_ALL)) return true;
     return folders.some((d) => p === d || p.startsWith(d + "/"));
   };
 
